@@ -315,14 +315,18 @@ export default function AdminConsoleView({
   const mfaPercentage = totalUsers > 0 ? Math.round((mfaCount / totalUsers) * 100) : 0;
 
   const allSystemRoles = [
-    "Payroll Admin",
+    "Super Admin",
+    "Payroll Administrator",
+    "Country Payroll Administrator",
     "HR",
     "Finance",
-    "Country Admin",
-    "Business Manager",
     "Compliance Officer",
     "Auditor",
-    "Executive",
+    "Executive Leadership",
+    "Business Manager",
+    "Client Manager",
+    "LTTS Project Manager",
+    "Employee",
   ];
 
   return (
@@ -691,7 +695,7 @@ export default function AdminConsoleView({
           <DialogTitle sx={{ fontWeight: 800 }}>
             {editingUser ? "Edit User Profile" : "Enroll New Enterprise User"}
           </DialogTitle>
-          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 1.5 }}>
+          <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: "20px !important", maxHeight: "70vh", overflowY: "auto" }}>
             <TextField fullWidth label="Full Name" size="small" value={formName} onChange={(e) => setFormName(e.target.value)} required />
             <TextField fullWidth label="Corporate Email" size="small" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} required />
             <div className="grid grid-cols-2 gap-4">
@@ -706,7 +710,15 @@ export default function AdminConsoleView({
             <FormControl fullWidth size="small">
               <InputLabel>Country Jurisdiction</InputLabel>
               <Select value={formCountry} label="Country Jurisdiction" onChange={(e) => setFormCountry(e.target.value as string)}>
-                <MenuItem value="India">India</MenuItem>
+                <MenuItem value="India">India 🇮🇳</MenuItem>
+                <MenuItem value="Singapore">Singapore 🇸🇬</MenuItem>
+                <MenuItem value="United States">United States 🇺🇸</MenuItem>
+                <MenuItem value="United Kingdom">United Kingdom 🇬🇧</MenuItem>
+                <MenuItem value="Canada">Canada 🇨🇦</MenuItem>
+                <MenuItem value="Australia">Australia 🇦🇺</MenuItem>
+                <MenuItem value="Japan">Japan 🇯🇵</MenuItem>
+                <MenuItem value="Germany">Germany 🇩🇪</MenuItem>
+                <MenuItem value="United Arab Emirates">United Arab Emirates 🇦🇪</MenuItem>
               </Select>
             </FormControl>
 

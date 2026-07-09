@@ -10,7 +10,8 @@ import {
   DollarSign, 
   Calendar, 
   Clock, 
-  FileText
+  FileText,
+  X
 } from "lucide-react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -29,6 +30,68 @@ export default function RuleEngineView({
 }: RuleEngineViewProps) {
   const [selectedCountryId, setSelectedCountryId] = useState(countries[0]?.id || "sg");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Add country form states
+  const [openAddCountryModal, setOpenAddCountryModal] = useState(false);
+  const [newCountryId, setNewCountryId] = useState("");
+  const [newCountryName, setNewCountryName] = useState("");
+  const [newCountryFlag, setNewCountryFlag] = useState("");
+  const [newCountryCurrency, setNewCountryCurrency] = useState("");
+  const [newCountryWorkingHours, setNewCountryWorkingHours] = useState(40);
+  const [newCountryStatus, setNewCountryStatus] = useState<Country["status"]>("Draft");
+  const [newCountryRisk, setNewCountryRisk] = useState<Country["riskLevel"]>("Low");
+
+  const handleAddCountrySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCountryId || !newCountryName || !newCountryFlag || !newCountryCurrency) {
+      alert("Please fill in all required fields.");
+      return;
+    }
+
+    const newCountry: Country = {
+      id: newCountryId.trim().toLowerCase(),
+      name: newCountryName.trim(),
+      flag: newCountryFlag.trim(),
+      currency: newCountryCurrency.trim(),
+      workingHours: Number(newCountryWorkingHours) || 40,
+      taxRules: "Progressive personal income tax schedules & corporate withholding.",
+      overtimePolicy: "1.5x baseline rate on weekdays; 2.0x baseline rate on public holidays.",
+      leavePolicy: "14 Days Statutory Leaves; 12 Days Sick Leaves.",
+      holidayCalendar: "National gazetted holidays & regional bank closures.",
+      payrollCalendar: "Monthly pay period ending last day of month. Final sign-off required by 25th.",
+      workflow: ["Input Ingestion", "Compliance Run", "SLA Sign-off", "Bank Release"],
+      readinessScore: 80,
+      complianceScore: 100,
+      dataQualityScore: 90,
+      status: newCountryStatus,
+      riskLevel: newCountryRisk
+    };
+
+    try {
+      const res = await fetch("/api/countries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newCountry)
+      });
+      if (!res.ok) throw new Error("Failed to add new country entity.");
+      
+      // Update local state
+      setCountries([...countries, newCountry]);
+      setSelectedCountryId(newCountry.id);
+      setOpenAddCountryModal(false);
+      
+      // Reset form
+      setNewCountryId("");
+      setNewCountryName("");
+      setNewCountryFlag("");
+      setNewCountryCurrency("");
+      setNewCountryWorkingHours(40);
+      setNewCountryStatus("Draft");
+      setNewCountryRisk("Low");
+    } catch (err: any) {
+      alert(err.message || "Error saving country.");
+    }
+  };
 
   // Form states
   const activeCountry = countries.find(c => c.id === selectedCountryId) || countries[0];
@@ -129,8 +192,8 @@ export default function RuleEngineView({
 
           {/* Plug & Play expansion */}
           <button
-            onClick={() => alert("Enterprise Rule Marketplace is active. Standardized Rule packs for Canada, Australia, India, and 120+ entities are ready to provision instantly on the cloud.")}
-            className="mt-3 p-1.5 border border-dashed border-[#EDEBE9] dark:border-slate-700 rounded text-center text-xs text-[#0078D4] hover:border-[#0078D4] transition-all flex items-center justify-center gap-1.5 font-bold bg-slate-50/20"
+            onClick={() => setOpenAddCountryModal(true)}
+            className="mt-3 p-1.5 border border-dashed border-[#EDEBE9] dark:border-slate-700 rounded text-center text-xs text-[#0078D4] hover:border-[#0078D4] transition-all flex items-center justify-center gap-1.5 font-bold bg-slate-50/20 w-full"
           >
             <Plus size={12} /> Add Country Entity
           </button>
@@ -265,6 +328,133 @@ export default function RuleEngineView({
           </div>
         </div>
       </div>
+
+      {openAddCountryModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" id="add-country-dialog">
+          <div className="flex items-center justify-center min-h-screen p-4 text-center">
+            {/* Backdrop */}
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={() => setOpenAddCountryModal(false)}></div>
+
+            {/* Content container */}
+            <div className={`relative rounded-2xl max-w-lg w-full p-6 text-left shadow-xl transform transition-all border ${isDark ? "bg-[#1E1E1E] border-[#2D2D2D] text-white" : "bg-white border-slate-100 text-slate-800"}`}>
+              <div className={`flex justify-between items-center pb-4 border-b ${isDark ? "border-[#2D2D2D]" : "border-slate-100"}`}>
+                <h3 className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Add New Country Entity</h3>
+                <button onClick={() => setOpenAddCountryModal(false)} className="text-slate-400 hover:text-slate-200 transition-colors cursor-pointer">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddCountrySubmit} className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Country Code (ID) *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ca"
+                      required
+                      value={newCountryId}
+                      onChange={(e) => setNewCountryId(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-700"}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Country Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Canada"
+                      required
+                      value={newCountryName}
+                      onChange={(e) => setNewCountryName(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-700"}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Flag Emoji *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 🇨🇦"
+                      required
+                      value={newCountryFlag}
+                      onChange={(e) => setNewCountryFlag(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-700"}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Currency Code *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CAD ($)"
+                      required
+                      value={newCountryCurrency}
+                      onChange={(e) => setNewCountryCurrency(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-700"}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Statutory Work Hours Limit *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      required
+                      value={newCountryWorkingHours}
+                      onChange={(e) => setNewCountryWorkingHours(Number(e.target.value))}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-700"}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Compliance Risk Level *</label>
+                    <select
+                      value={newCountryRisk}
+                      onChange={(e) => setNewCountryRisk(e.target.value as Country["riskLevel"])}
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white [background-color:#1F1F1F]" : "bg-white border-slate-200 text-slate-700"}`}
+                    >
+                      <option value="Low">Low Risk</option>
+                      <option value="Medium">Medium Risk</option>
+                      <option value="High">High Risk</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Statutory Onboarding Status *</label>
+                  <select
+                    value={newCountryStatus}
+                    onChange={(e) => setNewCountryStatus(e.target.value as Country["status"])}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white [background-color:#1F1F1F]" : "bg-white border-slate-200 text-slate-700"}`}
+                  >
+                    <option value="Draft">Draft Configuration</option>
+                    <option value="Pending Approval">Pending SLA Approval</option>
+                    <option value="Validating">Active Compliance Run</option>
+                    <option value="Completed">Completed Onboarding</option>
+                  </select>
+                </div>
+
+                <div className={`flex justify-end gap-3 pt-4 border-t ${isDark ? "border-[#2D2D2D]" : "border-slate-100"}`}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenAddCountryModal(false)}
+                    className={`px-4 py-2 border rounded-lg text-sm font-medium transition-colors cursor-pointer ${isDark ? "border-[#2D2D2D] text-slate-300 hover:bg-[#252525]" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-sm font-medium shadow-sm transition-colors cursor-pointer"
+                  >
+                    Add Entity
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

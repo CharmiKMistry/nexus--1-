@@ -398,7 +398,7 @@ export default function ManpowerView({
             <select
               value={selectedCountry}
               onChange={(e) => setSelectedCountry(e.target.value)}
-              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold cursor-pointer ${isDark ? "bg-[#161616] border-[#2D2D2D] text-white" : "bg-white border-slate-200"
+              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold cursor-pointer ${isDark ? "bg-[#161616] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-800"
                 }`}
             >
               <option value="All">All Countries</option>
@@ -412,7 +412,7 @@ export default function ManpowerView({
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
-              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold cursor-pointer ${isDark ? "bg-[#161616] border-[#2D2D2D] text-white" : "bg-white border-slate-200"
+              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold cursor-pointer ${isDark ? "bg-[#161616] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-800"
                 }`}
             >
               <option value="All">All Departments</option>
@@ -431,7 +431,7 @@ export default function ManpowerView({
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold cursor-pointer ${isDark ? "bg-[#161616] border-[#2D2D2D] text-white" : "bg-white border-slate-200"
+              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold cursor-pointer ${isDark ? "bg-[#161616] border-[#2D2D2D] text-white" : "bg-white border-slate-200 text-slate-800"
                 }`}
             >
               <option value="All">All Statuses</option>
@@ -557,7 +557,7 @@ export default function ManpowerView({
             </IconButton>
           </DialogTitle>
 
-          <DialogContent sx={{ px: 3, py: 3, display: "flex", flexDirection: "column", gap: 2.5 }}>
+          <DialogContent sx={{ px: 3, pt: "24px !important", pb: 3, display: "flex", flexDirection: "column", gap: 2.5, maxHeight: "70vh", overflowY: "auto" }}>
             {formError && (
               <Box sx={{ p: 1.5, bgcolor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#EF4444", fontSize: "11px", borderRadius: "4px", display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}>
                 <AlertCircle size={14} />
@@ -618,6 +618,14 @@ export default function ManpowerView({
                     sx={{ fontWeight: "bold" }}
                   >
                     <MenuItem value="India">India 🇮🇳</MenuItem>
+                    <MenuItem value="Singapore">Singapore 🇸🇬</MenuItem>
+                    <MenuItem value="United States">United States 🇺🇸</MenuItem>
+                    <MenuItem value="United Kingdom">United Kingdom 🇬🇧</MenuItem>
+                    <MenuItem value="Canada">Canada 🇨🇦</MenuItem>
+                    <MenuItem value="Australia">Australia 🇦🇺</MenuItem>
+                    <MenuItem value="Japan">Japan 🇯🇵</MenuItem>
+                    <MenuItem value="Germany">Germany 🇩🇪</MenuItem>
+                    <MenuItem value="United Arab Emirates">United Arab Emirates 🇦🇪</MenuItem>
                   </Select>
                 </FormControl>
               </div>

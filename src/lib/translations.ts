@@ -1,7 +1,7 @@
 export const translations: Record<string, Record<string, string>> = {
   en: {
     dashboard: "Dashboard",
-    manpower: "Manpower Directory",
+    manpower: "Employee Directory",
     payroll_events: "Payroll Event Center",
     smart_upload: "Smart Excel Ingestion",
     reports: "Reports",
@@ -14,7 +14,7 @@ export const translations: Record<string, Record<string, string>> = {
     integration_hub: "Integration Hub",
     approval_center: "Approval Center",
     compliance_audit: "Compliance & Audit",
-    admin_console: "Admin Console",
+    admin_console: "Administrator",
     client_timesheets: "Client Timesheet Portal",
     global_search: "Search employees, events, countries, logs...",
     notifications: "Governance Alerts",

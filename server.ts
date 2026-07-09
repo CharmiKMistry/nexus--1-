@@ -25,7 +25,7 @@ interface MongoConfig {
 let mongoClient: MongoClient | null = null;
 let mongoDb: any = null;
 let dbConfig: MongoConfig = {
-  uri: process.env.MONGODB_URI || "mongodb://localhost:27017/nexus-v1",
+  uri: process.env.MONGODB_URI || "",
   dbName: "nexus-v1"
 };
 
@@ -51,6 +51,7 @@ let localDatabase: {
   users: any[];
   permissions: any[];
   loginLogs: any[];
+  clientTimesheets: any[];
 } = {
   countries: [],
   employees: [],
@@ -59,7 +60,8 @@ let localDatabase: {
   auditLogs: [],
   users: [],
   permissions: [],
-  loginLogs: []
+  loginLogs: [],
+  clientTimesheets: []
 };
 
 // Helper to parse simple CSV files safely
@@ -99,38 +101,43 @@ function parseCSVFile(filePath: string): any[] {
 
 // Load or seed local JSON database with user's specific CSV data
 function loadLocalDatabase() {
+  let loadedFromFile = false;
   if (fs.existsSync(LOCAL_DB_FILE)) {
     try {
-      localDatabase = JSON.parse(fs.readFileSync(LOCAL_DB_FILE, "utf-8"));
-      // Ensure backward-compatibility for pre-existing json databases
+      const data = JSON.parse(fs.readFileSync(LOCAL_DB_FILE, "utf-8"));
+      localDatabase = { ...localDatabase, ...data };
       if (!localDatabase.users) localDatabase.users = [];
       if (!localDatabase.permissions) localDatabase.permissions = [];
       if (!localDatabase.loginLogs) localDatabase.loginLogs = [];
+      if (!localDatabase.clientTimesheets) localDatabase.clientTimesheets = [];
+      loadedFromFile = true;
     } catch (err) {
       console.error("Failed to parse local_database.json, re-seeding:", err);
     }
   }
 
-  // Always reload the user's specific master data from CSVs
-  const csvEmployees = parseCSVFile(path.join(process.cwd(), "employees_master.csv"));
-  if (csvEmployees.length > 0) {
-    localDatabase.employees = csvEmployees.map(emp => ({
-      id: emp["PS Number"] || emp["PSNumber"],
-      name: emp["Employee Name"] || emp["EmployeeName"],
-      email: emp["Company Email"] || emp["CompanyEmail"],
-      country: "India",
-      hub: emp["Hub"] || "Mumbai",
-      department: emp["Department"] || "Engineering",
-      title: emp["Designation"] || "Specialist",
-      grade: emp["Grade"] || "G3",
-      businessUnit: emp["Business Unit"] || emp["BusinessUnit"] || "Digital",
-      employmentType: emp["Employment Type"] || emp["EmploymentType"] || "Permanent",
-      joiningDate: emp["Date of Joining"] || emp["DateOfJoining"] || "2023-01-01",
-      currency: "INR",
-      salary: Number(emp["Base Salary"] || emp["BaseSalary"] || 0),
-      status: emp["Status"] || "Active",
-      manager: emp["Manager"] || ""
-    }));
+  // Only seed employees from CSV if empty to ensure deletions persist!
+  if (!localDatabase.employees || localDatabase.employees.length === 0) {
+    const csvEmployees = parseCSVFile(path.join(process.cwd(), "employees_master.csv"));
+    if (csvEmployees.length > 0) {
+      localDatabase.employees = csvEmployees.map(emp => ({
+        id: emp["PS Number"] || emp["PSNumber"],
+        name: emp["Employee Name"] || emp["EmployeeName"],
+        email: emp["Company Email"] || emp["CompanyEmail"],
+        country: "India",
+        hub: emp["Hub"] || "Mumbai",
+        department: emp["Department"] || "Engineering",
+        title: emp["Designation"] || "Specialist",
+        grade: emp["Grade"] || "G3",
+        businessUnit: emp["Business Unit"] || emp["BusinessUnit"] || "Digital",
+        employmentType: emp["Employment Type"] || emp["EmploymentType"] || "Permanent",
+        joiningDate: emp["Date of Joining"] || emp["DateOfJoining"] || "2023-01-01",
+        currency: "INR",
+        salary: Number(emp["Base Salary"] || emp["BaseSalary"] || 0),
+        status: emp["Status"] || "Active",
+        manager: emp["Manager"] || ""
+      }));
+    }
   }
 
   // Load timesheets to generate dynamic validations & reconciliations
@@ -138,226 +145,533 @@ function loadLocalDatabase() {
   const csvSeparations = parseCSVFile(path.join(process.cwd(), "separations.csv"));
   const csvVariablePay = parseCSVFile(path.join(process.cwd(), "variable_pay.csv"));
 
-  // Generate dynamic AI validation results
-  const validationList: any[] = [];
-  
-  // 1. Check timesheets for excessive working hours (> 12 hours)
-  csvTimesheets.forEach((ts, idx) => {
-    const totalHours = Number(ts["Total Hours"] || ts["TotalHours"] || 0);
-    if (totalHours > 12) {
-      const psNum = ts["PS Number"] || ts["PSNumber"];
-      const empName = ts["Employee Name"] || ts["EmployeeName"];
+  // Generate dynamic AI validation results if empty
+  if (!localDatabase.validationResults || localDatabase.validationResults.length === 0) {
+    const validationList: any[] = [];
+    csvTimesheets.forEach((ts, idx) => {
+      const totalHours = Number(ts["Total Hours"] || ts["TotalHours"] || 0);
+      if (totalHours > 12) {
+        const psNum = ts["PS Number"] || ts["PSNumber"];
+        const empName = ts["Employee Name"] || ts["EmployeeName"];
+        validationList.push({
+          id: `val-hours-${idx}`,
+          employeeId: psNum,
+          employeeName: empName,
+          country: "India",
+          issueType: "Daily Limit Violation",
+          severity: "High",
+          confidenceScore: 99,
+          explanation: `Worked ${totalHours} hours on ${ts["Date"]}, exceeding the 12-hour daily absolute threshold under India Factories Act.`,
+          recommendedResolution: "Reduce shift duration on subsequent days or offer compensatory double-rate pay.",
+          status: "Pending"
+        });
+      }
+    });
+
+    csvSeparations.forEach((sep, idx) => {
+      const psNum = sep["PS Number"] || sep["PSNumber"];
+      const empName = sep["Employee Name"] || sep["EmployeeName"];
       validationList.push({
-        id: `val-hours-${idx}`,
+        id: `val-sep-${idx}`,
         employeeId: psNum,
         employeeName: empName,
         country: "India",
-        issueType: "Daily Limit Violation",
-        severity: "High",
-        confidenceScore: 99,
-        explanation: `Worked ${totalHours} hours on ${ts["Date"]}, exceeding the 12-hour daily absolute threshold under India Factories Act.`,
-        recommendedResolution: "Reduce shift duration on subsequent days or offer compensatory double-rate pay.",
+        issueType: "Terminated Employee Activity",
+        severity: "Critical",
+        confidenceScore: 100,
+        explanation: `Employee ${empName} was separated on ${sep["Separation Date"]}, but is flagged in the active India payroll run. Reason: ${sep["Reason for Separation"] || "None"}`,
+        recommendedResolution: "Immediately hold payment run and trigger a manual clawback/payment hold instruction.",
         status: "Pending"
       });
-    }
-  });
-
-  // 2. Check separations for payments/activity for terminated employees
-  csvSeparations.forEach((sep, idx) => {
-    const psNum = sep["PS Number"] || sep["PSNumber"];
-    const empName = sep["Employee Name"] || sep["EmployeeName"];
-    validationList.push({
-      id: `val-sep-${idx}`,
-      employeeId: psNum,
-      employeeName: empName,
-      country: "India",
-      issueType: "Terminated Employee Activity",
-      severity: "Critical",
-      confidenceScore: 100,
-      explanation: `Employee ${empName} was separated on ${sep["Separation Date"]}, but is flagged in the active India payroll run. Reason: ${sep["Reason for Separation"] || "None"}`,
-      recommendedResolution: "Immediately hold payment run and trigger a manual clawback/payment hold instruction.",
-      status: "Pending"
     });
-  });
+    localDatabase.validationResults = validationList.slice(0, 15);
+  }
 
-  localDatabase.validationResults = validationList.slice(0, 15); // limit size for UI comfort
-
-  // Generate dynamic AI reconciliation results
-  const reconciliationList: any[] = [];
-
-  // 1. Reconcile timesheet OT hours variance
-  csvTimesheets.filter(ts => Number(ts["OT Hours"] || ts["OTHours"] || 0) > 3).forEach((ts, idx) => {
-    const psNum = ts["PS Number"] || ts["PSNumber"];
-    const empName = ts["Employee Name"] || ts["EmployeeName"];
-    const otHours = Number(ts["OT Hours"] || ts["OTHours"] || 0);
-    reconciliationList.push({
-      id: `rec-ot-${idx}`,
-      employeeId: psNum,
-      name: empName,
-      source: `Timesheets (${ts["Total Hours"]}h)`,
-      target: "HRMS (8h Standard)",
-      discrepancy: `+${otHours}.0 hrs OT Variance`,
-      type: "Overtime Reconciliation",
-      confidence: 96,
-      aiRecommendation: `Authorize ${otHours} hours overtime pay in INR. Verified against automatic badge-in office logs.`,
-      status: "Pending"
+  // Generate dynamic AI reconciliation results if empty
+  if (!localDatabase.reconciliationResults || localDatabase.reconciliationResults.length === 0) {
+    const reconciliationList: any[] = [];
+    csvTimesheets.filter(ts => Number(ts["OT Hours"] || ts["OTHours"] || 0) > 3).forEach((ts, idx) => {
+      const psNum = ts["PS Number"] || ts["PSNumber"];
+      const empName = ts["Employee Name"] || ts["EmployeeName"];
+      const otHours = Number(ts["OT Hours"] || ts["OTHours"] || 0);
+      reconciliationList.push({
+        id: `rec-ot-${idx}`,
+        employeeId: psNum,
+        name: empName,
+        source: `Timesheets (${ts["Total Hours"]}h)`,
+        target: "HRMS (8h Standard)",
+        discrepancy: `+${otHours}.0 hrs OT Variance`,
+        type: "Overtime Reconciliation",
+        confidence: 96,
+        aiRecommendation: `Authorize ${otHours} hours overtime pay in INR. Verified against automatic badge-in office logs.`,
+        status: "Pending"
+      });
     });
-  });
 
-  // 2. Reconcile Variable pay component
-  csvVariablePay.forEach((vp, idx) => {
-    const psNum = vp["PS Number"] || vp["PSNumber"];
-    const empName = vp["Name of employee"] || vp["NameOfEmployee"] || "Employee";
-    const amount = Number(vp["Amount in local currency"] || vp["AmountInLocalCurrency"] || 0);
-    reconciliationList.push({
-      id: `rec-vp-${idx}`,
-      employeeId: psNum,
-      name: empName,
-      source: `Variable Pay (₹${amount.toLocaleString()})`,
-      target: "HRMS Base Allowance",
-      discrepancy: `+₹${amount.toLocaleString()} Discrepancy`,
-      type: "Variable Pay Reconciliation",
-      confidence: 92,
-      aiRecommendation: `Authorize variable pay payout of ₹${amount.toLocaleString()} after confirming India Performance Rating scale sign-off.`,
-      status: "Pending"
+    csvVariablePay.forEach((vp, idx) => {
+      const psNum = vp["PS Number"] || vp["PSNumber"];
+      const empName = vp["Name of employee"] || vp["NameOfEmployee"] || "Employee";
+      const amount = Number(vp["Amount in local currency"] || vp["AmountInLocalCurrency"] || 0);
+      reconciliationList.push({
+        id: `rec-vp-${idx}`,
+        employeeId: psNum,
+        name: empName,
+        source: `Variable Pay (₹${amount.toLocaleString()})`,
+        target: "HRMS Base Allowance",
+        discrepancy: `+₹${amount.toLocaleString()} Discrepancy`,
+        type: "Variable Pay Reconciliation",
+        confidence: 92,
+        aiRecommendation: `Authorize variable pay payout of ₹${amount.toLocaleString()} after confirming India Performance Rating scale sign-off.`,
+        status: "Pending"
+      });
     });
-  });
+    localDatabase.reconciliationResults = reconciliationList.slice(0, 15);
+  }
 
-  localDatabase.reconciliationResults = reconciliationList.slice(0, 15);
+  // Expanded Country list for future records & compliance rule engine
+  if (!localDatabase.countries || localDatabase.countries.length === 0) {
+    localDatabase.countries = [
+      {
+        id: "in",
+        name: "India",
+        flag: "🇮🇳",
+        currency: "INR (₹)",
+        workingHours: 48,
+        taxRules: "EPF contribution required (12% employee/employer). Progressive income tax slabs.",
+        overtimePolicy: "Double the ordinary hourly wage rate for work beyond 9 hours daily.",
+        leavePolicy: "Minimum 15 days earned leave + statutory sick leave.",
+        holidayCalendar: "3 Mandatory National Holidays + regional state holidays.",
+        payrollCalendar: "Monthly payroll run on the last working day.",
+        workflow: ["HR Draft", "Finance Review", "Country Admin Certification", "Executive Release"],
+        readinessScore: 94,
+        complianceScore: 98,
+        dataQualityScore: 95,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "sg",
+        name: "Singapore",
+        flag: "🇸🇬",
+        currency: "SGD ($)",
+        workingHours: 44,
+        taxRules: "CPF contribution based on age. Progressive income tax with tax residency rule.",
+        overtimePolicy: "1.5x regular rate for hours beyond 44 weekly.",
+        leavePolicy: "Minimum 7-14 days annual leave + paid sick leave.",
+        holidayCalendar: "11 Public Holidays.",
+        payrollCalendar: "Monthly payroll processed on 25th.",
+        workflow: ["HR Draft", "Finance Review", "Executive Release"],
+        readinessScore: 100,
+        complianceScore: 100,
+        dataQualityScore: 100,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "us",
+        name: "United States",
+        flag: "🇺🇸",
+        currency: "USD ($)",
+        workingHours: 40,
+        taxRules: "Federal (FICA/FUTA), State, and Local taxes vary by jurisdiction.",
+        overtimePolicy: "1.5x regular rate for hours beyond 40 weekly (FLSA).",
+        leavePolicy: "Discretionary / PTO based on company policy.",
+        holidayCalendar: "11 Federal Holidays.",
+        payrollCalendar: "Semi-monthly or Bi-weekly run.",
+        workflow: ["HR Draft", "Compliance Certification", "Executive Release"],
+        readinessScore: 90,
+        complianceScore: 95,
+        dataQualityScore: 92,
+        status: "Completed",
+        riskLevel: "Medium"
+      },
+      {
+        id: "gb",
+        name: "United Kingdom",
+        flag: "🇬🇧",
+        currency: "GBP (£)",
+        workingHours: 37.5,
+        taxRules: "PAYE system (Income tax + National Insurance).",
+        overtimePolicy: "No statutory rate, contract-dependent.",
+        leavePolicy: "Statutory 28 days including Bank Holidays.",
+        holidayCalendar: "8 Bank Holidays.",
+        payrollCalendar: "Monthly run on the 28th.",
+        workflow: ["HR Draft", "Executive Release"],
+        readinessScore: 88,
+        complianceScore: 97,
+        dataQualityScore: 94,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "ca",
+        name: "Canada",
+        flag: "🇨🇦",
+        currency: "CAD ($)",
+        workingHours: 40,
+        taxRules: "Federal + Provincial taxes (CPP and EI premiums).",
+        overtimePolicy: "1.5x regular rate beyond 8 daily or 40 weekly depending on province.",
+        leavePolicy: "Minimum 2-3 weeks paid vacation.",
+        holidayCalendar: "9 Statutory Holidays.",
+        payrollCalendar: "Bi-weekly or Semi-monthly.",
+        workflow: ["HR Draft", "Finance Review", "Executive Release"],
+        readinessScore: 85,
+        complianceScore: 90,
+        dataQualityScore: 90,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "au",
+        name: "Australia",
+        flag: "🇦🇺",
+        currency: "AUD ($)",
+        workingHours: 38,
+        taxRules: "PAYG withholding + Superannuation Guarantee (11.5%).",
+        overtimePolicy: "Penalty rates apply depending on industry Awards.",
+        leavePolicy: "4 weeks annual paid leave.",
+        holidayCalendar: "National + State-specific Public Holidays.",
+        payrollCalendar: "Bi-weekly or Monthly.",
+        workflow: ["HR Draft", "Finance Review", "Executive Release"],
+        readinessScore: 92,
+        complianceScore: 96,
+        dataQualityScore: 95,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "jp",
+        name: "Japan",
+        flag: "🇯🇵",
+        currency: "JPY (¥)",
+        workingHours: 40,
+        taxRules: "Income tax + National Health Insurance + Welfare Pension.",
+        overtimePolicy: "1.25x base rate for normal OT, 1.35x for weekend work.",
+        leavePolicy: "10-20 days paid annual leave based on tenure.",
+        holidayCalendar: "16 National Holidays.",
+        payrollCalendar: "Monthly run on the 25th.",
+        workflow: ["HR Draft", "Finance Review", "Executive Release"],
+        readinessScore: 95,
+        complianceScore: 99,
+        dataQualityScore: 98,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "de",
+        name: "Germany",
+        flag: "🇩🇪",
+        currency: "EUR (€)",
+        workingHours: 40,
+        taxRules: "Lohnsteuer + Solidarity surcharge + Social security split 50/50.",
+        overtimePolicy: "Regulated by contract/collective bargaining agreements.",
+        leavePolicy: "Statutory minimum 20-24 days paid vacation.",
+        holidayCalendar: "9-14 public holidays depending on state.",
+        payrollCalendar: "Monthly run on the 25th.",
+        workflow: ["HR Draft", "Finance Review", "Executive Release"],
+        readinessScore: 91,
+        complianceScore: 98,
+        dataQualityScore: 93,
+        status: "Completed",
+        riskLevel: "Low"
+      },
+      {
+        id: "ae",
+        name: "United Arab Emirates",
+        flag: "🇦🇪",
+        currency: "AED (د.إ)",
+        workingHours: 48,
+        taxRules: "0% Personal Income Tax. Pension applies only to GCC nationals.",
+        overtimePolicy: "1.25x regular rate for normal OT, 1.5x between 9pm and 4am.",
+        leavePolicy: "30 calendar days annual leave.",
+        holidayCalendar: "Statutory religious and national public holidays.",
+        payrollCalendar: "Monthly run processed under WPS.",
+        workflow: ["HR Draft", "Finance Review", "Executive Release"],
+        readinessScore: 96,
+        complianceScore: 100,
+        dataQualityScore: 99,
+        status: "Completed",
+        riskLevel: "Low"
+      }
+    ];
+  }
 
-  // Set country list with real business parameters
-  localDatabase.countries = [
-    {
-      id: "in",
-      name: "India",
-      flag: "🇮🇳",
-      currency: "INR (₹)",
-      workingHours: 48,
-      taxRules: "EPF contribution required (12% employee/employer). Progressive income tax slabs.",
-      overtimePolicy: "Double the ordinary hourly wage rate for work beyond 9 hours daily.",
-      leavePolicy: "Minimum 15 days earned leave + statutory sick leave.",
-      holidayCalendar: "3 Mandatory National Holidays + regional state holidays.",
-      payrollCalendar: "Monthly payroll run on the last working day.",
-      workflow: ["HR Draft", "Finance Review", "Country Admin Certification", "Executive Release"],
-      readinessScore: 100,
-      complianceScore: 100,
-      dataQualityScore: 100,
-      status: "Completed",
-      riskLevel: "Low"
-    }
-  ];
+  // System audit logs
+  if (!localDatabase.auditLogs || localDatabase.auditLogs.length === 0) {
+    localDatabase.auditLogs = [
+      {
+        id: "audit-1",
+        timestamp: new Date().toISOString(),
+        user: "System",
+        role: "Super Admin",
+        action: "Database Initialized",
+        details: "Seeded and loaded actual master directories, timesheets, and reconciliation items from user's files."
+      }
+    ];
+  }
 
-  localDatabase.auditLogs = [
-    {
-      id: "audit-1",
-      timestamp: new Date().toISOString(),
-      user: "System",
-      role: "Super Admin",
-      action: "Database Initialized",
-      details: "Seeded and loaded actual master directories, timesheets, and reconciliation items from user's files."
-    }
-  ];
+  // Seeding Default Users (ONLY Ronak and Charmi, as requested, to prevent dummy file bloat)
+  if (!localDatabase.users || localDatabase.users.length === 0) {
+    localDatabase.users = [
+      {
+        id: "user-ronak-1",
+        name: "Ronak Surve",
+        psNumber: "PS-09600",
+        email: "ronaksurve96@gmail.com",
+        department: "Executive Office",
+        country: "India",
+        roles: ["Super Admin", "Executive Leadership"],
+        status: "Active",
+        password: "Password123!",
+        lastLogin: "2026-07-06T10:25:00Z",
+        failedLoginAttempts: 0,
+        mfaEnabled: true,
+        passwordExpiryDate: "2027-12-31",
+        mfaStatus: "Enabled"
+      },
+      {
+        id: "user-ronak-2",
+        name: "Ronak Surve",
+        psNumber: "PS-09999",
+        email: "ronaksurve@gmail.com",
+        department: "Executive Office",
+        country: "India",
+        roles: ["Super Admin", "Executive Leadership"],
+        status: "Active",
+        password: "Fy2crhwww@",
+        lastLogin: "2026-07-06T10:20:00Z",
+        failedLoginAttempts: 0,
+        mfaEnabled: true,
+        passwordExpiryDate: "2027-12-31",
+        mfaStatus: "Enabled"
+      },
+      {
+        id: "user-charmi-1",
+        name: "Charmi Patel",
+        psNumber: "PS-08045",
+        email: "charmipatel@gmail.com",
+        department: "HR",
+        country: "India",
+        roles: ["Super Admin", "HR"],
+        status: "Active",
+        password: "Password123!",
+        lastLogin: "2026-07-09T10:00:00Z",
+        failedLoginAttempts: 0,
+        mfaEnabled: true,
+        passwordExpiryDate: "2027-12-31",
+        mfaStatus: "Enabled"
+      },
+      {
+        id: "user-charmi-2",
+        name: "Charmi Mistry",
+        psNumber: "PS-08046",
+        email: "charmimistry2427@gmail.com",
+        department: "Executive Office",
+        country: "India",
+        roles: ["Super Admin", "HR"],
+        status: "Active",
+        password: "Password123!",
+        lastLogin: "2026-07-09T10:30:00Z",
+        failedLoginAttempts: 0,
+        mfaEnabled: true,
+        passwordExpiryDate: "2027-12-31",
+        mfaStatus: "Enabled"
+      }
+    ];
+  }
 
-  saveLocalDatabase();
-  localDatabase.users = [
-    {
-      id: "user-1",
-      name: "Ronak Surve",
-      psNumber: "PS-09600",
-      email: "ronaksurve96@gmail.com",
-      department: "Executive Office",
-      country: "India",
-      roles: ["Super Admin", "Executive Leadership"],
-      status: "Active",
-      password: "Password123!",
-      lastLogin: "2026-07-06T10:25:00Z",
-      failedLoginAttempts: 0,
-      mfaEnabled: true,
-      passwordExpiryDate: "2026-10-01",
-      mfaStatus: "Enabled"
-    },
-    {
-      id: "user-2",
-      name: "John Smith",
-      psNumber: "PS-00122",
-      email: "john.smith@nexus-corp.com",
-      department: "HR",
-      country: "Singapore",
-      roles: ["HR", "Payroll Administrator", "Country Payroll Administrator"],
-      status: "Active",
-      password: "Password123!",
-      lastLogin: "2026-07-05T09:12:00Z",
-      failedLoginAttempts: 0,
-      mfaEnabled: true,
-      passwordExpiryDate: "2026-09-15",
-      mfaStatus: "Enabled"
-    },
-    {
-      id: "user-3",
-      name: "Emma Watson",
-      psNumber: "PS-02241",
-      email: "emma.watson@nexus-corp.com",
-      department: "Finance",
-      country: "Germany",
-      roles: ["Finance", "Compliance Officer"],
-      status: "Active",
-      password: "Password123!",
-      lastLogin: "2026-07-04T14:22:00Z",
-      failedLoginAttempts: 0,
-      mfaEnabled: false,
-      passwordExpiryDate: "2026-08-01",
-      mfaStatus: "Disabled"
-    },
-    {
-      id: "user-4",
-      name: "Kenji Sato",
-      psNumber: "PS-03310",
-      email: "kenji.sato@nexus-corp.com",
-      department: "Operations",
-      country: "Japan",
-      roles: ["Country Payroll Administrator", "Auditor"],
-      status: "Locked",
-      password: "Password123!",
-      lastLogin: "2026-07-01T11:05:00Z",
-      failedLoginAttempts: 5,
-      mfaEnabled: true,
-      passwordExpiryDate: "2026-07-30",
-      mfaStatus: "Enabled"
-    },
-    {
-      id: "user-charmi",
-      name: "Charmi Patel",
-      psNumber: "PS-08045",
-      email: "charmipatel@gmail.com",
-      department: "HR",
-      country: "India",
-      roles: ["HR"],
-      status: "Active",
-      password: "123456",
-      lastLogin: "2026-07-09T10:00:00Z",
-      failedLoginAttempts: 0,
-      mfaEnabled: false,
-      passwordExpiryDate: "2027-12-31",
-      mfaStatus: "Disabled"
-    }
-  ];
+  // Seeding Permissions Matrix for all 12 Business Roles
+  if (!localDatabase.permissions || localDatabase.permissions.length === 0) {
+    localDatabase.permissions = [
+      { id: "perm-1", role: "Super Admin", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": true, "User Management": true } },
+      { id: "perm-2", role: "Payroll Administrator", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": true, "User Management": false } },
+      { id: "perm-3", role: "Payroll Admin", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": true, "User Management": false } },
+      { id: "perm-4", role: "Country Payroll Administrator", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": false, "User Management": false } },
+      { id: "perm-5", role: "Country Admin", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": false, "User Management": false } },
+      { id: "perm-6", role: "HR", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-7", role: "Finance", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-8", role: "Compliance Officer", permissions: { "Payroll Upload": false, "Validation": true, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": true, "Administration": false, "User Management": false } },
+      { id: "perm-9", role: "Auditor", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-10", role: "Executive Leadership", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-11", role: "Executive", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-12", role: "Business Manager", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": true, "Audit": false, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-13", role: "Client Manager", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": true, "Reports": true, "Audit": false, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-14", role: "LTTS Project Manager", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": true, "Reports": true, "Audit": false, "Country Rules": false, "Administration": false, "User Management": false } },
+      { id: "perm-15", role: "Employee", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": false, "Audit": false, "Country Rules": false, "Administration": false, "User Management": false } }
+    ];
+  }
 
-  localDatabase.permissions = [
-    { id: "perm-1", role: "Super Admin", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": true, "User Management": true } },
-    { id: "perm-2", role: "Payroll Administrator", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
-    { id: "perm-3", role: "Country Payroll Administrator", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": true, "Administration": false, "User Management": false } },
-    { id: "perm-4", role: "HR", permissions: { "Payroll Upload": true, "Validation": true, "Approvals": false, "Reports": true, "Audit": false, "Country Rules": false, "Administration": false, "User Management": false } },
-    { id: "perm-5", role: "Finance", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": true, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
-    { id: "perm-6", role: "Compliance Officer", permissions: { "Payroll Upload": false, "Validation": true, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": true, "Administration": false, "User Management": false } },
-    { id: "perm-7", role: "Auditor", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } },
-    { id: "perm-8", role: "Executive Leadership", permissions: { "Payroll Upload": false, "Validation": false, "Approvals": false, "Reports": true, "Audit": true, "Country Rules": false, "Administration": false, "User Management": false } }
-  ];
+  // Seeding System Login logs
+  if (!localDatabase.loginLogs || localDatabase.loginLogs.length === 0) {
+    localDatabase.loginLogs = [
+      { id: "log-1", timestamp: "2026-07-06T10:25:00Z", email: "ronaksurve96@gmail.com", name: "Ronak Surve", browser: "Chrome", device: "Windows Desktop", ip: "192.168.1.55", method: "Microsoft SSO", status: "Success" },
+      { id: "log-2", timestamp: "2026-07-09T10:00:00Z", email: "charmipatel@gmail.com", name: "Charmi Patel", browser: "Safari", device: "macOS Laptop", ip: "192.168.1.88", method: "Microsoft SSO", status: "Success" },
+      { id: "log-3", timestamp: "2026-07-09T10:30:00Z", email: "charmimistry2427@gmail.com", name: "Charmi Mistry", browser: "Chrome", device: "iPhone 15", ip: "172.56.21.99", method: "Microsoft SSO", status: "Success" }
+    ];
+  }
 
-  localDatabase.loginLogs = [
-    { id: "log-1", timestamp: "2026-07-06T10:25:00Z", email: "ronaksurve96@gmail.com", name: "Ronak Surve", browser: "Chrome", device: "Windows Desktop", ip: "192.168.1.55", method: "Microsoft SSO", status: "Success" },
-    { id: "log-2", timestamp: "2026-07-06T10:15:00Z", email: "kenji.sato@nexus-corp.com", name: "Kenji Sato", browser: "Safari", device: "macOS Laptop", ip: "203.112.45.18", method: "Password", status: "Failed", details: "Incorrect password attempt 5 - account locked." },
-    { id: "log-3", timestamp: "2026-07-05T09:12:00Z", email: "john.smith@nexus-corp.com", name: "John Smith", browser: "Edge", device: "Windows Desktop", ip: "10.0.4.120", method: "Microsoft SSO", status: "Success" }
-  ];
+  // Seed Client Timesheet multi-stage workflow records for July 2025 and July 2026
+  if (!localDatabase.clientTimesheets || localDatabase.clientTimesheets.length === 0) {
+    localDatabase.clientTimesheets = [
+      {
+        id: "cts-1",
+        employeeId: "PS-09600",
+        employeeName: "Ronak Surve",
+        date: "2026-07-01",
+        project: "Automated Payroll Ledger Integration",
+        client: "Chevron",
+        regularHours: 8,
+        overtimeHours: 2,
+        shift: "General",
+        location: "Onsite",
+        comments: "Core system testing completed.",
+        status: "Client Approved",
+        workflowLogs: [
+          { stage: "Draft", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-01T17:00:00Z", comments: "Created draft." },
+          { stage: "Submitted", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-01T17:15:00Z", comments: "Submitted for client approval." },
+          { stage: "Client Approved", user: "client.manager@chevron.com", role: "Client Manager", timestamp: "2026-07-02T09:30:00Z", comments: "Timesheet and OT approved. Excellent progress.", duration: "16h 15m", slaStatus: "Within SLA" }
+        ]
+      },
+      {
+        id: "cts-2",
+        employeeId: "PS-09600",
+        employeeName: "Ronak Surve",
+        date: "2026-07-02",
+        project: "Automated Payroll Ledger Integration",
+        client: "Chevron",
+        regularHours: 8,
+        overtimeHours: 0,
+        shift: "General",
+        location: "Onsite",
+        comments: "Database schema migration finalized.",
+        status: "LTTS PM Approved",
+        workflowLogs: [
+          { stage: "Draft", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-02T17:00:00Z", comments: "Draft saved." },
+          { stage: "Submitted", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-02T17:10:00Z", comments: "Submitted." },
+          { stage: "Client Approved", user: "client.manager@chevron.com", role: "Client Manager", timestamp: "2026-07-03T09:00:00Z", comments: "Approved.", duration: "15h 50m", slaStatus: "Within SLA" },
+          { stage: "LTTS PM Approved", user: "ltts.pm@nexus.com", role: "LTTS Project Manager", timestamp: "2026-07-03T11:45:00Z", comments: "Verified billable allocation.", duration: "2h 45m", slaStatus: "Within SLA" }
+        ]
+      },
+      {
+        id: "cts-3",
+        employeeId: "PS-09600",
+        employeeName: "Ronak Surve",
+        date: "2026-07-03",
+        project: "Automated Payroll Ledger Integration",
+        client: "Chevron",
+        regularHours: 8,
+        overtimeHours: 4,
+        shift: "Night",
+        location: "Remote",
+        comments: "Critical hotfix deployed for server container crash.",
+        status: "Payroll Ready",
+        workflowLogs: [
+          { stage: "Draft", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-03T17:00:00Z", comments: "Draft." },
+          { stage: "Submitted", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-03T17:05:00Z", comments: "Submitted for urgent OT signoff." },
+          { stage: "Client Approved", user: "client.manager@chevron.com", role: "Client Manager", timestamp: "2026-07-04T08:15:00Z", comments: "Signed off on urgent night shift.", duration: "15h 10m", slaStatus: "Within SLA" },
+          { stage: "LTTS PM Approved", user: "ltts.pm@nexus.com", role: "LTTS Project Manager", timestamp: "2026-07-04T10:00:00Z", comments: "Project budget verified.", duration: "1h 45m", slaStatus: "Within SLA" },
+          { stage: "HR Approved", user: "charmi.patel@nexus.com", role: "HR", timestamp: "2026-07-04T14:30:00Z", comments: "Attendance policy compliant.", duration: "4h 30m", slaStatus: "Within SLA" },
+          { stage: "Payroll Ready", user: "payroll.admin@nexus.com", role: "Payroll Administrator", timestamp: "2026-07-05T09:00:00Z", comments: "Consolidated to payroll run.", duration: "18h 30m", slaStatus: "Within SLA" }
+        ]
+      },
+      {
+        id: "cts-4",
+        employeeId: "PS-08045",
+        employeeName: "Charmi Patel",
+        date: "2026-07-06",
+        project: "Smart UI Redesign Framework",
+        client: "General Electric",
+        regularHours: 8,
+        overtimeHours: 0,
+        shift: "General",
+        location: "Hybrid",
+        comments: "Conducted Figma UI/UX review session with GE leadership.",
+        status: "Submitted",
+        workflowLogs: [
+          { stage: "Draft", user: "Charmi Patel", role: "Employee", timestamp: "2026-07-06T17:00:00Z", comments: "Conducted GE session." },
+          { stage: "Submitted", user: "Charmi Patel", role: "Employee", timestamp: "2026-07-06T17:30:00Z", comments: "Submitted for client manager review." }
+        ]
+      },
+      {
+        id: "cts-5",
+        employeeId: "PS-08045",
+        employeeName: "Charmi Patel",
+        date: "2026-07-07",
+        project: "Smart UI Redesign Framework",
+        client: "General Electric",
+        regularHours: 8,
+        overtimeHours: 1,
+        shift: "General",
+        location: "Onsite",
+        comments: "Prototyped the sidebar menu state animations.",
+        status: "Correction Requested",
+        workflowLogs: [
+          { stage: "Draft", user: "Charmi Patel", role: "Employee", timestamp: "2026-07-07T17:00:00Z", comments: "Sidebar animations prototyping." },
+          { stage: "Submitted", user: "Charmi Patel", role: "Employee", timestamp: "2026-07-07T17:15:00Z", comments: "Submitted." },
+          { stage: "Correction Requested", user: "client.manager@ge.com", role: "Client Manager", timestamp: "2026-07-08T08:30:00Z", comments: "Please clarify the 1 hour OT description.", duration: "15h 15m", slaStatus: "Within SLA" }
+        ]
+      },
+      {
+        id: "cts-6",
+        employeeId: "PS-08045",
+        employeeName: "Charmi Patel",
+        date: "2026-07-08",
+        project: "Smart UI Redesign Framework",
+        client: "General Electric",
+        regularHours: 8,
+        overtimeHours: 3,
+        shift: "General",
+        location: "Onsite",
+        comments: "Long workshop. Fixed sidebar overflow layouts on mobile views.",
+        status: "Rejected",
+        workflowLogs: [
+          { stage: "Draft", user: "Charmi Patel", role: "Employee", timestamp: "2026-07-08T17:00:00Z", comments: "Completed workshop." },
+          { stage: "Submitted", user: "Charmi Patel", role: "Employee", timestamp: "2026-07-08T17:20:00Z", comments: "Submitted." },
+          { stage: "Rejected", user: "client.manager@ge.com", role: "Client Manager", timestamp: "2026-07-09T08:00:00Z", comments: "We cannot approve overtime because the workshop budget was hard capped at 8 hours maximum.", duration: "14h 40m", slaStatus: "Within SLA" }
+        ]
+      },
+      {
+        id: "cts-7",
+        employeeId: "PS-09600",
+        employeeName: "Ronak Surve",
+        date: "2026-07-09",
+        project: "Unified Database Schema",
+        client: "Toyota",
+        regularHours: 8,
+        overtimeHours: 0,
+        shift: "General",
+        location: "Hybrid",
+        comments: "Drafting the index optimization plan for Spanner.",
+        status: "Draft",
+        workflowLogs: [
+          { stage: "Draft", user: "Ronak Surve", role: "Employee", timestamp: "2026-07-09T09:00:00Z", comments: "Began planning index optimization." }
+        ]
+      },
+      // 2025 backup seeds for historical analysis
+      {
+        id: "cts-2025-1",
+        employeeId: "PS-09600",
+        employeeName: "Ronak Surve",
+        date: "2025-07-01",
+        project: "Automated Payroll Ledger Integration",
+        client: "Chevron",
+        regularHours: 8,
+        overtimeHours: 2,
+        shift: "General",
+        location: "Onsite",
+        comments: "Historical system setup and CSV pipeline seeding.",
+        status: "Payroll Ready",
+        workflowLogs: [
+          { stage: "Draft", user: "Ronak Surve", role: "Employee", timestamp: "2025-07-01T17:00:00Z", comments: "Created." },
+          { stage: "Submitted", user: "Ronak Surve", role: "Employee", timestamp: "2025-07-01T17:30:00Z", comments: "Submitted." },
+          { stage: "Client Approved", user: "client.manager@chevron.com", role: "Client Manager", timestamp: "2025-07-02T10:00:00Z", comments: "Approved.", duration: "16h 30m", slaStatus: "Within SLA" },
+          { stage: "LTTS PM Approved", user: "ltts.pm@nexus.com", role: "LTTS Project Manager", timestamp: "2025-07-02T14:00:00Z", comments: "Verified.", duration: "4h 00m", slaStatus: "Within SLA" },
+          { stage: "HR Approved", user: "charmi.patel@nexus.com", role: "HR", timestamp: "2025-07-03T09:15:00Z", comments: "Verified.", duration: "19h 15m", slaStatus: "Within SLA" },
+          { stage: "Payroll Ready", user: "payroll.admin@nexus.com", role: "Payroll Administrator", timestamp: "2025-07-03T11:00:00Z", comments: "Finished.", duration: "1h 45m", slaStatus: "Within SLA" }
+        ]
+      }
+    ];
+  }
 
   saveLocalDatabase();
 }
@@ -1243,6 +1557,243 @@ app.get("/api/timesheets", async (req, res) => {
   }
 });
 
+// Client Timesheet Portal Endpoints
+app.get("/api/client-timesheets", async (req, res) => {
+  try {
+    const { userEmail, userRole, psNumber } = req.query;
+    let list = localDatabase.clientTimesheets || [];
+
+    // Filter by client if client manager
+    if (userRole === "Client Manager" && typeof userEmail === "string") {
+      let clientName = "";
+      if (userEmail.toLowerCase().includes("chevron")) clientName = "Chevron";
+      else if (userEmail.toLowerCase().includes("ge") || userEmail.toLowerCase().includes("general")) clientName = "General Electric";
+      else if (userEmail.toLowerCase().includes("toyota")) clientName = "Toyota";
+      else if (userEmail.toLowerCase().includes("intel")) clientName = "Intel";
+      
+      if (clientName) {
+        list = list.filter(ts => ts.client === clientName);
+      }
+    }
+    // Filter by employee if user role is Employee or if they are looking up their own timesheets
+    else if (userRole === "Employee" && typeof psNumber === "string") {
+      list = list.filter(ts => String(ts.employeeId) === String(psNumber));
+    }
+
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/client-timesheets", async (req, res) => {
+  try {
+    const entry = req.body;
+    const newId = `cts-${Date.now()}`;
+    
+    const timesheet = {
+      id: newId,
+      employeeId: entry.employeeId || entry["PS Number"],
+      employeeName: entry.employeeName || entry["Employee Name"],
+      date: entry.date || entry["Date"],
+      project: entry.project || "Default Project",
+      client: entry.client || entry["Client Name"] || "Chevron",
+      regularHours: Number(entry.regularHours !== undefined ? entry.regularHours : (entry["Total Hours"] || 8)),
+      overtimeHours: Number(entry.overtimeHours !== undefined ? entry.overtimeHours : (entry["OT Hours"] || 0)),
+      shift: entry.shift || "General",
+      location: entry.location || "Onsite",
+      comments: entry.comments || "",
+      status: entry.status || "Draft",
+      isHoliday: !!entry.isHoliday,
+      isWeekend: !!entry.isWeekend,
+      workflowLogs: entry.workflowLogs || [
+        {
+          stage: entry.status || "Draft",
+          user: entry.employeeName || "Employee",
+          role: "Employee",
+          timestamp: new Date().toISOString(),
+          comments: entry.comments || "Began timesheet entry."
+        }
+      ]
+    };
+
+    if (!localDatabase.clientTimesheets) {
+      localDatabase.clientTimesheets = [];
+    }
+    localDatabase.clientTimesheets.push(timesheet);
+    saveLocalDatabase();
+    return res.json({ success: true, timesheet });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/client-timesheets/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const entry = req.body;
+    
+    let updated = false;
+    localDatabase.clientTimesheets = localDatabase.clientTimesheets.map(ts => {
+      if (ts.id === id) {
+        updated = true;
+        return {
+          ...ts,
+          ...entry,
+          id // prevent ID overriding
+        };
+      }
+      return ts;
+    });
+
+    if (updated) {
+      saveLocalDatabase();
+      return res.json({ success: true });
+    }
+    return res.status(404).json({ error: "Client timesheet not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/client-timesheets/:id/workflow", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { stage, user, role, comments } = req.body;
+    
+    let timesheet: any = null;
+    localDatabase.clientTimesheets = localDatabase.clientTimesheets.map(ts => {
+      if (ts.id === id) {
+        const lastLog = ts.workflowLogs[ts.workflowLogs.length - 1];
+        let duration = "0h";
+        let slaStatus: "Within SLA" | "SLA Breached" = "Within SLA";
+        
+        if (lastLog && lastLog.timestamp) {
+          const diffMs = Date.now() - new Date(lastLog.timestamp).getTime();
+          const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+          const diffMins = Math.floor((diffMs / (1000 * 60)) % 60);
+          duration = `${diffHrs}h ${diffMins}m`;
+          // SLA threshold: 48 hours
+          if (diffHrs >= 48) {
+            slaStatus = "SLA Breached";
+          }
+        }
+
+        const newLog = {
+          stage,
+          user,
+          role,
+          timestamp: new Date().toISOString(),
+          comments: comments || `Advanced timesheet status to ${stage}.`,
+          duration,
+          slaStatus
+        };
+        
+        timesheet = {
+          ...ts,
+          status: stage,
+          workflowLogs: [...ts.workflowLogs, newLog]
+        };
+        return timesheet;
+      }
+      return ts;
+    });
+
+    if (timesheet) {
+      // Seamless Integration to timesheets.csv when Payroll Ready
+      if (stage === "Payroll Ready") {
+        const csvPath = path.join(process.cwd(), "timesheets.csv");
+        const list = parseCSVFile(csvPath);
+        
+        // Remove existing entry for same employee and date to prevent duplication
+        const cleanList = list.filter(row => 
+          !(String(row["PS Number"] || row["psNumber"]) === String(timesheet.employeeId) && 
+            String(row["Date"] || row["date"]) === String(timesheet.date))
+        );
+
+        const newCsvEntry = {
+          "PS Number": timesheet.employeeId,
+          "Employee Name": timesheet.employeeName,
+          "Date": timesheet.date,
+          "Total Hours": timesheet.regularHours,
+          "OT Hours": timesheet.overtimeHours,
+          "Approval Status": "Approved",
+          "Client Name": timesheet.client
+        };
+        
+        cleanList.push(newCsvEntry);
+        
+        const headers = ["PS Number", "Employee Name", "Date", "Total Hours", "OT Hours", "Approval Status", "Client Name"];
+        const csvContent = [
+          headers.join(","),
+          ...cleanList.map(row => headers.map(h => {
+            const key = Object.keys(row).find(k => k.toLowerCase().replace(/\s+/g, '') === h.toLowerCase().replace(/\s+/g, ''));
+            return key !== undefined && row[key] !== undefined ? row[key] : "";
+          }).join(","))
+        ].join("\n");
+        
+        fs.writeFileSync(csvPath, csvContent, "utf-8");
+      }
+
+      saveLocalDatabase();
+      return res.json({ success: true, timesheet });
+    }
+    return res.status(404).json({ error: "Client timesheet not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/client-timesheets/bulk", async (req, res) => {
+  try {
+    const { action, dates, employeeId, employeeName, client, project, regularHours, overtimeHours, shift, location, comments } = req.body;
+    
+    if (!localDatabase.clientTimesheets) {
+      localDatabase.clientTimesheets = [];
+    }
+
+    if (action === "apply-dates" && Array.isArray(dates)) {
+      dates.forEach(d => {
+        // Remove existing draft/submitted for same employee on same date to overwrite
+        localDatabase.clientTimesheets = localDatabase.clientTimesheets.filter(ts => 
+          !(String(ts.employeeId) === String(employeeId) && ts.date === d)
+        );
+
+        const newId = `cts-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        localDatabase.clientTimesheets.push({
+          id: newId,
+          employeeId,
+          employeeName,
+          date: d,
+          project: project || "Default Project",
+          client: client || "Chevron",
+          regularHours: Number(regularHours),
+          overtimeHours: Number(overtimeHours),
+          shift: shift || "General",
+          location: location || "Onsite",
+          comments: comments || "Bulk entry applied.",
+          status: "Submitted",
+          workflowLogs: [
+            {
+              stage: "Submitted",
+              user: employeeName,
+              role: "Employee",
+              timestamp: new Date().toISOString(),
+              comments: comments || "Bulk submission applied."
+            }
+          ]
+        });
+      });
+      saveLocalDatabase();
+      return res.json({ success: true, count: dates.length });
+    }
+    
+    return res.status(400).json({ error: "Unsupported bulk action" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/timesheets", async (req, res) => {
   try {
     const entry = req.body;
@@ -1261,6 +1812,42 @@ app.post("/api/timesheets", async (req, res) => {
     fs.writeFileSync(path.join(process.cwd(), "timesheets.csv"), csvContent, "utf-8");
     loadLocalDatabase(); // refresh dynamic insights
     return res.json({ success: true, entry });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/timesheets", async (req, res) => {
+  try {
+    const { psNumber, date, status } = req.body;
+    const list = parseCSVFile(path.join(process.cwd(), "timesheets.csv"));
+    
+    let updated = false;
+    const updatedList = list.map(row => {
+      const rowPs = row["PS Number"] || row["psNumber"];
+      const rowDate = row["Date"] || row["date"];
+      if (String(rowPs) === String(psNumber) && String(rowDate) === String(date)) {
+        updated = true;
+        return {
+          ...row,
+          "Approval Status": status
+        };
+      }
+      return row;
+    });
+    
+    const headers = ["PS Number", "Employee Name", "Date", "Total Hours", "OT Hours", "Approval Status", "Client Name"];
+    const csvContent = [
+      headers.join(","),
+      ...updatedList.map(row => headers.map(h => {
+        const key = Object.keys(row).find(k => k.toLowerCase().replace(/\s+/g, '') === h.toLowerCase().replace(/\s+/g, ''));
+        return key !== undefined && row[key] !== undefined ? row[key] : "";
+      }).join(","))
+    ].join("\n");
+    
+    fs.writeFileSync(path.join(process.cwd(), "timesheets.csv"), csvContent, "utf-8");
+    loadLocalDatabase();
+    return res.json({ success: true, updated, psNumber, date, status });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

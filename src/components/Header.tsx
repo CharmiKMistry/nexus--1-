@@ -205,17 +205,51 @@ export default function Header({
       }}
       id="nexus_header"
     >
-      {/* Global Search Component with Instant Category Overlay */}
-      <Box
-        ref={searchContainerRef}
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-          width: "100%",
-          maxWidth: 360,
-        }}
-      >
+      {/* Left section: Logo Brand and Global Search Component with Instant Category Overlay */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 3, width: "100%", maxWidth: 500 }}>
+        {/* Brand logo */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, flexShrink: 0 }}>
+          <Box
+            sx={{
+              width: 28,
+              height: 28,
+              borderRadius: "6px",
+              backgroundColor: "#2563EB",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              color: "#FFFFFF",
+              fontSize: "0.95rem",
+              boxShadow: "0 2px 4px rgba(37, 99, 235, 0.2)",
+            }}
+          >
+            N
+          </Box>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 800,
+              color: isDark ? "#FFFFFF" : "#111827",
+              letterSpacing: "0.5px",
+              fontFamily: "'Outfit', sans-serif",
+              display: { xs: "none", sm: "block" }
+            }}
+          >
+            NEXUS
+          </Typography>
+        </Box>
+
+        <Box
+          ref={searchContainerRef}
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+            width: "100%",
+            maxWidth: 360,
+          }}
+        >
         <Box
           sx={{
             display: "flex",
@@ -450,8 +484,7 @@ export default function Header({
           </Paper>
         )}
       </Box>
-
-      {/* Action Area */}
+    </Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
         {/* UTC Clock */}
         <Box
@@ -852,7 +885,7 @@ export default function Header({
       {/* User Guide */}
       <Dialog open={openUserGuide} onClose={() => setOpenUserGuide(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>📖 NEXUS User Guide</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ maxHeight: "70vh", overflowY: "auto" }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>1. Global Payroll Onboarding</Typography>
           <Typography variant="body2" sx={{ mb: 2, color: "text.secondary" }}>
             To onboard countries, use the "Country Rule Engine" to set working hours, tax bands, leave limits, and holiday calendars. Use "Smart Excel Upload" or configure automated pipelines via "Integration Hub".
@@ -874,7 +907,7 @@ export default function Header({
       {/* FAQ */}
       <Dialog open={openFaq} onClose={() => setOpenFaq(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>❓ Frequently Asked Questions</DialogTitle>
-        <DialogContent dividers sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <DialogContent dividers sx={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: "70vh", overflowY: "auto" }}>
           <Box>
             <Typography sx={{ fontWeight: 700, fontSize: "13.5px" }}>Q: How do country holiday rules affect overtime?</Typography>
             <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
@@ -902,7 +935,7 @@ export default function Header({
       {/* Keyboard Shortcuts */}
       <Dialog open={openShortcuts} onClose={() => setOpenShortcuts(false)} maxWidth="xs">
         <DialogTitle sx={{ fontWeight: 800 }}>⌨️ Productivity Shortcuts</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ maxHeight: "70vh", overflowY: "auto" }}>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between" }}>
               <Typography sx={{ fontSize: "13px", fontWeight: 600 }}>Global Search</Typography>
@@ -938,7 +971,7 @@ export default function Header({
       {/* Contact Administrator */}
       <Dialog open={openContactAdmin} onClose={() => setOpenContactAdmin(false)}>
         <DialogTitle sx={{ fontWeight: 800 }}>📞 Contact Administrator</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ maxHeight: "70vh", overflowY: "auto" }}>
           <Typography sx={{ fontSize: "13.5px", mb: 1, fontWeight: 600 }}>NEXUS Global Enterprise Ops Desk:</Typography>
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 0.5 }}>• Email: compliance-desk@nexus.corporate.local</Typography>
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 0.5 }}>• Internal Extension: +1 (800) 555-NXUS</Typography>
@@ -952,7 +985,7 @@ export default function Header({
       {/* Release Notes */}
       <Dialog open={openReleaseNotes} onClose={() => setOpenReleaseNotes(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>🚀 Release Notes - v3.0.0</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ maxHeight: "70vh", overflowY: "auto" }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "primary.main" }}>v3.0 - Global Deployable Release (Current)</Typography>
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
             Added multi-language localizations across 16 world regions, offline local cache handling, automatic draft preservation, accessibility (WCAG AA) standard contrast indicators, and customized widget layouts.
@@ -970,7 +1003,7 @@ export default function Header({
       {/* About */}
       <Dialog open={openAbout} onClose={() => setOpenAbout(false)}>
         <DialogTitle sx={{ fontWeight: 800 }}>🏢 About NEXUS</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ maxHeight: "70vh", overflowY: "auto" }}>
           <Typography sx={{ fontWeight: 700, fontSize: "14px", mb: 1 }}>NEXUS Governance Engine</Typography>
           <Typography variant="body2" sx={{ color: "text.secondary", mb: 1 }}>
             NEXUS is an elite, multi-national enterprise payroll validation and reconciliation platform built to align localized legislative guidelines with corporate record streams.

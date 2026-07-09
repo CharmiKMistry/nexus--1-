@@ -112,10 +112,10 @@ export default function Sidebar({
   });
 
   // Enterprise Sidebar styling specifications
-  const sidebarBg = "#1E293B";
-  const textColor = "#E2E8F0";
-  const hoverBg = "#334155";
-  const selectedBg = "#2563EB";
+  const sidebarBg = "#0A0F1D"; // Extremely attractive deep sapphire black
+  const textColor = "#CBD5E1"; // Slate 300 for premium readability
+  const hoverBg = "rgba(255, 255, 255, 0.08)";
+  const selectedBg = "#2563EB"; // Royal blue
   const iconColor = "#FFFFFF";
 
   return (
@@ -173,7 +173,7 @@ export default function Sidebar({
                   color: "#FFFFFF",
                   letterSpacing: "0.5px",
                   lineHeight: 1.1,
-                  fontFamily: "'Roboto', sans-serif",
+                  fontFamily: "'Outfit', sans-serif",
                 }}
               >
                 NEXUS
@@ -291,7 +291,7 @@ export default function Sidebar({
                       fontSize: "12.5px",
                       fontWeight: isActive ? 700 : 500,
                       letterSpacing: "0.2px",
-                      fontFamily: "'Roboto', sans-serif",
+                      fontFamily: "'Outfit', sans-serif",
                       color: "inherit"
                     }}
                   >

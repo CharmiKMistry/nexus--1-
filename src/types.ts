@@ -1,13 +1,19 @@
 export type UserRole = 
+  | "Super Admin"
+  | "Payroll Administrator"
   | "Payroll Admin"
+  | "Country Payroll Administrator"
+  | "Country Admin"
   | "HR"
   | "Finance"
-  | "Country Admin"
-  | "Business Manager"
   | "Compliance Officer"
   | "Auditor"
+  | "Executive Leadership"
   | "Executive"
-  | "Super Admin";
+  | "Business Manager"
+  | "Client Manager"
+  | "LTTS Project Manager"
+  | "Employee";
 
 export interface Country {
   id: string;

@@ -1,0 +1,8 @@
+{
+  "name": "NEXUS – Global Payroll Intelligence & Governance Platform",
+  "description": "An intelligent enterprise-grade global payroll intelligence & governance platform orchestrating ingest validation, smart reconciliation, and readiness.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

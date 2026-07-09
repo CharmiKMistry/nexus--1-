@@ -1,0 +1,101 @@
+PS Number,Employee Name,Company Email,Country,Hub,Department,Designation,Grade,Business Unit,Employment Type,Date of Joining,Currency,Base Salary,Status,Manager
+PS100001,Sneha Patel,sneha.patel0@nexusdemo.com,UAE,Pune,Finance,Engineer,G6,Digital,Contract,2023-04-14,AED,845691,Active,PS100001
+PS100002,Sai Gupta,sai.gupta1@nexusdemo.com,India,Bengaluru,Payroll,Analyst,G3,Sustainability,Contract,2021-04-14,INR,1022002,Active,PS100002
+PS100003,Rohan Patel,rohan.patel2@nexusdemo.com,USA,Vadodara,IT,Senior Engineer,G4,Plant Engineering,Permanent,2021-04-10,USD,1569734,Active,PS100001
+PS100004, Sai Gupta,sai.gupta3@nexusdemo.com,UK,Mumbai,Logistics,Designer,G5,Energy,Contract,2023-07-25,GBP,1234479,Active,PS100003
+PS100005,Rohan Sharma,rohan.sharma4@nexusdemo.com,UAE,Noida,Payroll,Analyst,G1,Sustaining,Permanent,2021-02-14,AED,1622329,Active,PS100004
+PS100006,Rohan Gupta,rohan.gupta5@nexusdemo.com,Japan,Noida,Compliance,Consultant,G3,Digital,Contract,2020-04-20,JPY,921503,Active,PS100003
+PS100007,Priya Patel,priya.patel6@nexusdemo.com,UAE,Kochi,Sales,Designer,G5,Sustaining,Contract,2020-03-09,AED,1882650,Active,PS100006
+PS100008,Karan Patel,karan.patel7@nexusdemo.com,UAE,Pune,Logistics,Designer,G1,Product Engineering,Contract,2024-05-18,AED,1199583,Active,PS100002
+PS100009,Sai Sharma,sai.sharma8@nexusdemo.com,Singapore,Kochi,Logistics,Specialist,G4,Energy,Permanent,2020-11-20,SGD,790074,Active,PS100002
+PS100010,Sai Patel,sai.patel9@nexusdemo.com,UAE,Kochi,Quality,Senior Engineer,G2,Automotive,Contract,2021-12-07,AED,1242331,Active,PS100003
+PS100011,Karan Gupta,karan.gupta10@nexusdemo.com,UAE,Pune,Quality,Architect,G2,Automotive,Contract,2022-03-24,AED,1822839,Active,PS100006
+PS100012,Ananya Patel,ananya.patel11@nexusdemo.com,UK,Bengaluru,Payroll,Manager,G4,Product Engineering,Permanent,2021-09-24,GBP,603504,Active,PS100010
+PS100013,Ananya Joshi,ananya.joshi12@nexusdemo.com,India,Noida,Finance,Director,G3,Product Engineering,Contract,2023-10-18,INR,1515250,Active,PS100006
+PS100014,Sai Sharma,sai.sharma13@nexusdemo.com,India,Noida,Customer Success,Consultant,G5,Automotive,Permanent,2021-08-01,INR,1093153,Active,PS100006
+PS100015,Amit Gupta,amit.gupta14@nexusdemo.com,UK,Bengaluru,IT,Specialist,G6,Product Engineering,Permanent,2021-07-28,GBP,1292021,Active,PS100007
+PS100016,Rohan Sharma,rohan.sharma15@nexusdemo.com,Singapore,Hyderabad,Marketing,Analyst,G3,Sustainability,Permanent,2024-07-16,SGD,1184323,Active,PS100003
+PS100017,Amit Joshi,amit.joshi16@nexusdemo.com,Singapore,Gurugram,Legal,Consultant,G1,Plant Engineering,Contract,2020-04-18,SGD,1377507,Active,PS100005
+PS100018,Amit Sharma,amit.sharma17@nexusdemo.com,USA,Pune,Operations,Director,G2,Sustaining,Contract,2020-11-20,USD,774844,Active,PS100013
+PS100019,Sai Gupta,sai.gupta18@nexusdemo.com,UK,Noida,Quality,Designer,G3,Plant Engineering,Permanent,2022-06-03,GBP,1648083,Active,PS100011
+PS100020,Sai Patel,sai.patel19@nexusdemo.com,UK,Kochi,Marketing,Senior Engineer,G6,Energy,Contract,2021-03-12,GBP,903102,Active,PS100010
+PS100021,Ananya Sharma,ananya.sharma20@nexusdemo.com,USA,Noida,Compliance,Consultant,G4,Product Engineering,Contract,2023-11-24,USD,1359578,Active,PS100015
+PS100022,Ananya Patel,ananya.patel21@nexusdemo.com,UAE,Gurugram,Legal,Specialist,G3,Energy,Contract,2020-06-25,AED,1624597,Active,PS100014
+PS100023,Sneha Patel,sneha.patel22@nexusdemo.com,Germany,Chennai,IT,Senior Engineer,G1,Product Engineering,Permanent,2023-10-06,EUR,1447952,Active,PS100020
+PS100024,Rohan Patel,rohan.patel23@nexusdemo.com,UAE,Kochi,Customer Success,Senior Engineer,G6,Product Engineering,Contract,2022-07-12,AED,1248404,Active,PS100015
+PS100025,Ananya Sharma,ananya.sharma24@nexusdemo.com,Germany,Kochi,Payroll,Director,G6,Plant Engineering,Contract,2024-03-24,EUR,1633512,Active,PS100024
+PS100026,Ananya Patel,ananya.patel25@nexusdemo.com,UAE,Bengaluru,Legal,Engineer,G4,Plant Engineering,Contract,2023-01-14,AED,582736,Active,PS100021
+PS100027,Sai Gupta,sai.gupta26@nexusdemo.com,UAE,Gurugram,Quality,Consultant,G6,Sustainability,Permanent,2023-06-27,AED,1399387,Active,PS100022
+PS100028,Rohan Gupta,rohan.gupta27@nexusdemo.com,Germany,Pune,Quality,Director,G6,Automotive,Contract,2023-06-28,EUR,1843197,Active,PS100014
+PS100029,Ananya Gupta,ananya.gupta28@nexusdemo.com,USA,Gurugram,Logistics,Designer,G1,Automotive,Permanent,2022-06-18,USD,1622668,Active,PS100007
+PS100030,Karan Gupta,karan.gupta29@nexusdemo.com,UK,Mumbai,Engineering,Senior Engineer,G2,Product Engineering,Contract,2020-02-09,GBP,1315579,Active,PS100020
+PS100031,Karan Gupta,karan.gupta30@nexusdemo.com,India,Vadodara,HR,Designer,G3,Digital,Contract,2022-07-25,INR,664971,Active,PS100008
+PS100032,Sai Sharma,sai.sharma31@nexusdemo.com,UK,Kochi,Customer Success,Senior Engineer,G6,Sustaining,Permanent,2021-03-03,GBP,1223945,Active,PS100010
+PS100033,Sneha Joshi,sneha.joshi32@nexusdemo.com,UAE,Chennai,Engineering,Consultant,G5,Energy,Permanent,2023-04-18,AED,1273934,Active,PS100027
+PS100034,Sai Patel,sai.patel33@nexusdemo.com,UK, Gurugram,Quality,Senior Engineer,G6,Plant Engineering,Permanent,2023-01-28,GBP,1339344,Active,PS100010
+PS100035,Rohan Patel,rohan.patel34@nexusdemo.com,India,Gurugram,Finance,Consultant,G6,Product Engineering,Permanent,2020-05-18,INR,1883389,Active,PS100028
+PS100036,Rohan Gupta,rohan.gupta35@nexusdemo.com,Singapore, Hyderabad,Customer Success,Analyst,G3,Digital,Permanent,2021-04-03,SGD,1648873,Active,PS100031
+PS100037,Karan Gupta,karan.gupta36@nexusdemo.com,USA,Chennai,Compliance,Specialist,G4,Sustaining,Permanent,2021-04-17,USD,1121153,Active,PS100002
+PS100038,Sai Gupta,sai.gupta37@nexusdemo.com,UAE,Noida,Compliance,Consultant,G3,Product Engineering,Permanent,2021-04-18,AED,1822833,Active,PS100023
+PS100039,Sneha Gupta,sneha.gupta38@nexusdemo.com,USA,Gurugram,Legal,Director,G3,Sustainability,Permanent,2020-03-12,USD,1228224,Active,PS100013
+PS100040,Sneha Patel,sneha.patel39@nexusdemo.com,Germany,Bengaluru,Payroll,Manager,G4,Product Engineering,Contract,2020-12-07,EUR,1322239,Active,PS100021
+PS100041,Rohan Sharma,rohan.sharma40@nexusdemo.com,Japan,Pune,Quality,Director,G3,Sustainability,Contract,2022-03-24,JPY,1843194,Active,PS100014
+PS100042,Karan Gupta,karan.gupta41@nexusdemo.com,India,Pune,Finance,Specialist,G5,Energy,Contract,2021-09-24,INR,1093150,Active,PS100037
+PS100043,Karan Patel,karan.patel42@nexusdemo.com,Singapore,Noida,Operations,Engineer,G4,Sustaining,Permanent,2023-10-18,SGD,1184320,Active,PS100002
+PS100044,Sai Sharma,sai.sharma43@nexusdemo.com,Germany,Pune,Legal,Designer,G3,Automotive,Contract,2021-08-01,EUR,1322233,Active,PS100013
+PS100045,Ananya Gupta,ananya.gupta44@nexusdemo.com,UK,Noida,Customer Success,Architect,G2,Sustainability,Contract,2021-07-28,GBP,1648080,Active,PS100038
+PS100046,Sai Patel,sai.patel45@nexusdemo.com,UAE, Gurugram,Quality,Designer,G3,Sustaining,Contract,2024-07-16,AED,1822830,Active,PS100011
+PS100047,Rohan Joshi,rohan.joshi46@nexusdemo.com,UK,Vadodara,Quality,Consultant,G6,Product Engineering,Contract,2020-04-18,GBP,1234470,Active,PS100012
+PS100048,Sai Gupta,sai.gupta47@nexusdemo.com,India,Gurugram,HR,Consultant,G6,Digital,Permanent,2020-11-20,INR,1883380,Active,PS100008
+PS100049,Rohan Joshi,rohan.joshi48@nexusdemo.com,UK,Hyderabad,HR,Manager,G4,Plant Engineering,Permanent,2022-06-03,GBP,603500,Active,PS100045
+PS100050,Rohan Gupta,rohan.gupta49@nexusdemo.com,USA,Vadodara,Operations,Architect,G2,Sustaining,Contract,2021-03-12,USD,774840,Active,PS100042
+PS100051,Amit Joshi,amit.joshi50@nexusdemo.com,Singapore,Gurugram, HR,Analyst,G3,Sustaining,Contract,2023-11-24,SGD,1184329,Active,PS100003
+PS100052,Ananya Patel,ananya.patel51@nexusdemo.com,Singapore,Bengaluru,HR,Analyst,G3,Automotive,Permanent,2020-06-25,SGD,1184321,Active,PS100012
+PS100053,Sneha Joshi,sneha.joshi52@nexusdemo.com,UK,Noida,Logistics,Designer,G5,Plant Engineering,Contract,2023-10-06,GBP,1648089,Active,PS100047
+PS100054,Amit Patel,amit.patel53@nexusdemo.com,UK,Bengaluru,IT,Specialist,G6,Digital,Permanent,2022-07-12,GBP,1292029,Active,PS100034
+PS100055,Rohan Patel,rohan.patel54@nexusdemo.com,UAE,Noida,IT,Specialist,G6,Plant Engineering,Contract,2024-03-24,AED,1822839,Active,PS100045
+PS100056,Ananya Sharma,ananya.sharma55@nexusdemo.com,UK, Kochi,Operations,Director,G2,Sustainability,Contract,2023-01-14,GBP,1648083,Active,PS100010
+PS100057,Ananya Gupta,ananya.gupta56@nexusdemo.com,India,Gurugram,Legal,Specialist,G3,Sustaining,Permanent,2023-06-27,INR,1515259,Active,PS100048
+PS100058,Rohan Patel,rohan.patel57@nexusdemo.com,USA,Gurugram,Quality,Consultant,G6,Plant Engineering,Permanent,2023-06-28,USD,1359579,Active,PS100018
+PS100059,Ananya Gupta,ananya.gupta58@nexusdemo.com,Singapore,Bengaluru,Operations,Consultant,G6,Automotive,Contract,2022-06-18,SGD,1377509,Active,PS100052
+PS100060,Karan Gupta,karan.gupta59@nexusdemo.com,UK, Hyderabad,HR,Analyst,G3,Digital,Contract,2020-02-09,GBP,1292023,Active,PS100031
+PS100061,Karan Gupta,karan.gupta60@nexusdemo.com,UAE,Gurugram,HR,Analyst,G3,Energy,Permanent,2022-07-25,AED,1622323,Active,PS100022
+PS100062,Sai Sharma,sai.sharma61@nexusdemo.com,UAE,Hyderabad,IT,Specialist,G6,Automotive,Contract,2021-03-03,AED,1822835,Active,PS100010
+PS100063,Sneha Joshi,sneha.joshi62@nexusdemo.com,Germany,Vadodara,Quality,Consultant,G6,Plant Engineering,Contract,2023-04-18,EUR,1843199,Active,PS100040
+PS100064,Sai Patel,sai.patel63@nexusdemo.com,USA,Gurugram,Legal,Engineer,G4,Product Engineering,Contract,2023-01-28,USD,1121159,Active,PS100058
+PS100065,Rohan Patel,rohan.patel64@nexusdemo.com,UAE,Kochi,Quality,Senior Engineer,G2,Sustainability,Permanent,2020-05-18,AED,1242339,Active,PS100027
+PS100066,Rohan Gupta,rohan.gupta65@nexusdemo.com,Singapore,Pune,Operations,Architect,G2,Automotive,Contract,2021-04-03,SGD,1377503,Active,PS100002
+PS100067,Karan Gupta,karan.gupta66@nexusdemo.com,Japan,Pune,Legal,Specialist,G3,Sustainability,Contract,2021-04-17,JPY,921504,Active,PS100041
+PS100068,Sai Gupta,sai.gupta67@nexusdemo.com,UK,Noida,Legal,Designer,G3,Energy,Permanent,2021-04-18,GBP,1648083,Active,PS100062
+PS100069,Sneha Gupta,sneha.gupta68@nexusdemo.com,UK,Gurugram,Compliance,Consultant,G3,Sustaining,Contract,2020-03-12,GBP,1292024,Active,PS100047
+PS100070,Sneha Patel,sneha.patel69@nexusdemo.com,USA,Gurugram,Legal,Director,G3,Sustaining,Contract,2020-12-07,USD,1228229,Active,PS100013
+PS100071,Rohan Sharma,rohan.sharma70@nexusdemo.com,UK,Pune,Legal,Specialist,G3,Automotive,Permanent,2022-03-24,GBP,1292024,Active,PS100068
+PS100072,Karan Gupta,karan.gupta71@nexusdemo.com,UAE,Pune,Operations,Designer,G3,Energy,Permanent,2021-09-24,AED,1622320,Active,PS100008
+PS100073,Karan Patel,karan.patel72@nexusdemo.com,UAE,Kochi,Compliance,Consultant,G3,Plant Engineering,Contract,2023-10-18,AED,1822830,Active,PS100007
+PS100074,Sai Sharma,sai.sharma73@nexusdemo.com,UK,Pune,Logistics,Designer,G5,Sustaining,Permanent,2021-08-01,GBP,1234473,Active,PS100012
+PS100075,Ananya Gupta,ananya.gupta74@nexusdemo.com,UAE,Bengaluru,Payroll,Manager,G4,Product Engineering,Contract,2021-07-28,AED,1242330,Active,PS100011
+PS100076,Sai Patel,sai.patel75@nexusdemo.com,UAE, Gurugram,Quality,Architect,G2,Automotive,Contract,2024-07-16,AED,1242330,Active,PS100010
+PS100077,Rohan Joshi,rohan.joshi76@nexusdemo.com,Japan,Pune,Quality,Architect,G2,Product Engineering,Permanent,2020-04-18,JPY,1822830,Active,PS100041
+PS100078,Sai Gupta,sai.gupta77@nexusdemo.com,UK,Gurugram,Compliance,Consultant,G3,Sustaining,Contract,2020-11-20,GBP,1292020,Active,PS100032
+PS100079,Rohan Joshi,rohan.joshi78@nexusdemo.com,Singapore,Kochi,Sales,Designer,G5,Energy,Contract,2022-06-03,SGD,790070,Active,PS100009
+PS100080,Rohan Gupta,rohan.gupta79@nexusdemo.com,India,Gurugram,Legal,Specialist,G3,Product Engineering,Contract,2021-03-12,INR,1515250,Active,PS100048
+PS100081,Amit Joshi,amit.joshi80@nexusdemo.com,UAE, Gurugram,Quality,Designer,G3,Plant Engineering,Permanent,2023-11-24,AED,1822829,Active,PS100011
+PS100082,Ananya Patel,ananya.patel81@nexusdemo.com,UAE,Kochi,Marketing,Senior Engineer,G6,Energy,Permanent,2020-06-25,AED,1882651,Active,PS100007
+PS100083,Sneha Joshi,sneha.joshi82@nexusdemo.com,India,Bengaluru,Payroll,Manager,G4,Sustaining,Permanent,2023-10-06,INR,1022009,Active,PS100013
+PS100084,Amit Patel,amit.patel83@nexusdemo.com,Singapore,Kochi,Quality,Senior Engineer,G2,Automotive,Permanent,2022-07-12,SGD,1184329,Active,PS100009
+PS100085,Rohan Patel,rohan.patel84@nexusdemo.com,UAE,Pune,HR,Designer,G3,Sustaining,Contract,2024-03-24,AED,1622329,Active,PS100011
+PS100086,Ananya Sharma,ananya.sharma85@nexusdemo.com,USA, Noida,Compliance,Consultant,G4,Digital,Contract,2023-01-14,USD,1359583,Active,PS100015
+PS100087,Ananya Gupta,ananya.gupta86@nexusdemo.com,UAE,Bengaluru,Legal,Engineer,G4,Plant Engineering,Permanent,2023-06-27,AED,1242339,Active,PS100010
+PS100088,Rohan Patel,rohan.patel87@nexusdemo.com,UK,Kochi,Customer Success,Senior Engineer,G6,Product Engineering,Contract,2023-06-28,GBP,903109,Active,PS100020
+PS100089,Ananya Gupta,ananya.gupta88@nexusdemo.com,USA,Gurugram,Legal,Director,G3,Sustaining,Contract,2022-06-18,USD,1228229,Active,PS100013
+PS100090,Karan Gupta,karan.gupta89@nexusdemo.com,Japan,Pune,Quality,Director,G3,Sustainability,Contract,2020-02-09,JPY,1843193,Active,PS100041
+PS100091,Karan Gupta,karan.gupta90@nexusdemo.com,UAE,Gurugram,HR,Analyst,G3,Product Engineering,Permanent,2022-07-25,AED,1822823,Active,PS100011
+PS100092,Sai Sharma,sai.sharma91@nexusdemo.com,India,Gurugram,Finance,Consultant,G6,Product Engineering,Contract,2021-03-03,INR,1883385,Active,PS100048
+PS100093,Sneha Joshi,sneha.joshi92@nexusdemo.com,UAE,Pune,Quality,Architect,G2,Sustaining,Contract,2023-04-18,AED,1822839,Active,PS100011
+PS100094,Sai Patel,sai.patel93@nexusdemo.com,India,Gurugram,HR,Consultant,G6,Digital,Permanent,2023-01-28,INR,1883389,Active,PS100008
+PS100095,Rohan Patel,rohan.patel94@nexusdemo.com,USA,Pune,Operations,Director,G2,Sustaining,Contract,2020-05-18,USD,774849,Active,PS100018
+PS100096,Rohan Gupta,rohan.gupta95@nexusdemo.com,Singapore,Noida,IT,Specialist,G6,Product Engineering,Permanent,2021-04-03,SGD,1184323,Active,PS100009
+PS100097,Karan Gupta,karan.gupta96@nexusdemo.com,UK,Mumbai,Engineering,Senior Engineer,G2,Sustainability,Contract,2021-04-17,GBP,1648084,Active,PS100019
+PS100098,Sai Gupta,sai.gupta97@nexusdemo.com,UAE,Kochi,Marketing,Senior Engineer,G6,Energy,Permanent,2021-04-18,AED,1882653,Active,PS100007
+PS100099,Sneha Gupta,sneha.gupta98@nexusdemo.com,USA,Gurugram,Legal,Director,G3,Sustaining,Contract,2020-03-12,USD,1228224,Active,PS100013
+PS105000,Karan Joshi,karan.joshi99@nexusdemo.com,Germany,Chennai,IT,Senior Engineer,G1,Product Engineering,Contract,2023-10-06,EUR,1447952,Active,PS100020

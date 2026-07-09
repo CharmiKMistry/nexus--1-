@@ -23,17 +23,17 @@ export default function AgentView({ theme }: AgentViewProps) {
   const [activeAgentIdx, setActiveAgentIdx] = useState<number | null>(null);
   const [logs, setLogs] = useState<string[]>([
     "[03:15:02] [Data Collection Agent] Initialized Workday connection pool.",
-    "[03:15:10] [Data Collection Agent] Ingested Munich timesheet inputs (82 records).",
-    "[03:15:15] [Validation Agent] Anomaly scan pass completed. 5 flags generated.",
+    "[03:15:10] [Data Collection Agent] Ingested Mumbai timesheet inputs (82 records).",
+    "[03:15:15] [Validation Agent] Anomaly scan pass completed. 3 flags generated.",
     "[03:15:22] [Reconciliation Agent] Multi-source claim comparison finalized.",
-    "[03:15:35] [Notification Agent] Dispatched Microsoft Teams alerts to Germany approval leads."
+    "[03:15:35] [Notification Agent] Dispatched Microsoft Teams alerts to India approval leads."
   ]);
 
   const [agents, setAgents] = useState<AgentState[]>([
     { name: "Data Collection Agent", status: "success", progress: 100, currentTask: "Idle (Polled Workday)", executionLogs: ["Connection stable.", "Polled 1420 files."] },
-    { name: "Validation Agent", status: "success", progress: 100, currentTask: "Idle (Scan Complete)", executionLogs: ["Pattern scan done.", "5 anomalies flagged."] },
+    { name: "Validation Agent", status: "success", progress: 100, currentTask: "Idle (Scan Complete)", executionLogs: ["Pattern scan done.", "3 anomalies flagged."] },
     { name: "Reconciliation Agent", status: "success", progress: 100, currentTask: "Idle (Aligned)", executionLogs: ["HRMS cross check done."] },
-    { name: "Compliance Agent", status: "success", progress: 100, currentTask: "Idle (Cert Passed)", executionLogs: ["Germany rest rules check."] },
+    { name: "Compliance Agent", status: "success", progress: 100, currentTask: "Idle (Cert Passed)", executionLogs: ["India Factories Act check."] },
     { name: "Approval Agent", status: "idle", progress: 0, currentTask: "Awaiting Admin Action", executionLogs: [] },
     { name: "Notification Agent", status: "success", progress: 100, currentTask: "Slack/Teams Posted", executionLogs: ["Slack webhook active."] },
     { name: "Audit Agent", status: "success", progress: 100, currentTask: "Blocks Signed", executionLogs: ["Immutable transaction posted."] },

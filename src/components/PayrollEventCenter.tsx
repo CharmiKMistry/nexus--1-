@@ -33,7 +33,7 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [formEmployeeId, setFormEmployeeId] = useState("");
   const [formEmployeeName, setFormEmployeeName] = useState("");
-  const [formCountry, setFormCountry] = useState("United States");
+  const [formCountry, setFormCountry] = useState("India");
   const [formType, setFormType] = useState<PayrollEvent["type"]>("Overtime");
   const [formComments, setFormComments] = useState("");
   const [formSupportDocs, setFormSupportDocs] = useState("");
@@ -233,14 +233,7 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
                 onChange={(e) => setFormCountry(e.target.value)}
                 className={`w-full text-xs p-1.5 rounded border outline-none font-semibold ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}
               >
-                <option value="United States">United States 🇺🇸</option>
-                <option value="Singapore">Singapore 🇸🇬</option>
-                <option value="Germany">Germany 🇩🇪</option>
                 <option value="India">India 🇮🇳</option>
-                <option value="United Kingdom">United Kingdom 🇬🇧</option>
-                <option value="Australia">Australia 🇦🇺</option>
-                <option value="Canada">Canada 🇨🇦</option>
-                <option value="UAE">UAE 🇦🇪</option>
               </select>
             </div>
 

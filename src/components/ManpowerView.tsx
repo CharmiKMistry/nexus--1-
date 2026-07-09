@@ -68,10 +68,10 @@ export default function ManpowerView({
   // Form fields
   const [formName, setFormName] = useState("");
   const [formEmail, setFormEmail] = useState("");
-  const [formCountry, setFormCountry] = useState("Singapore");
+  const [formCountry, setFormCountry] = useState("India");
   const [formDept, setFormDept] = useState("Engineering");
   const [formTitle, setFormTitle] = useState("");
-  const [formSalary, setFormSalary] = useState(5000);
+  const [formSalary, setFormSalary] = useState(120000);
   const [formStatus, setFormStatus] = useState("Active");
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -229,16 +229,16 @@ export default function ManpowerView({
   // Ingest synthetic expansion pack
   const handleLoadSyntheticPack = async () => {
     const syntheticPack: Employee[] = [
-      { id: "EMP-4150", name: "David Alaba", country: "Germany", department: "Engineering", title: "Senior DevOps Engineer", salary: 7200, status: "Active" },
-      { id: "EMP-4151", name: "Samantha Koh", country: "Singapore", department: "Product", title: "Lead UX Researcher", salary: 6500, status: "Active" },
-      { id: "EMP-4152", name: "Jonathan Edwards", country: "United States", department: "Sales", title: "Account Executive", salary: 8100, status: "Active" },
-      { id: "EMP-4153", name: "Keiko Tanaka", country: "Japan", department: "Operations", title: "Local Coordinator", salary: 6900, status: "Active" },
-      { id: "EMP-4154", name: "Amélie Poulin", country: "France", department: "Marketing", title: "Content strategist", salary: 5400, status: "Active" },
-      { id: "EMP-4155", name: "Siddharth Nair", country: "Singapore", department: "Finance", title: "Corporate Controller", salary: 9200, status: "Active" },
-      { id: "EMP-4156", name: "Hans Zimmer", country: "Germany", department: "Engineering", title: "Media Architect", salary: 8900, status: "Active" },
-      { id: "EMP-4157", name: "Emily Watson", country: "United States", department: "Engineering", title: "QA Engineer", salary: 5800, status: "Inactive" },
-      { id: "EMP-4158", name: "Yukihiro Matsumoto", country: "Japan", department: "Engineering", title: "Distinguished Fellow", salary: 14500, status: "Active" },
-      { id: "EMP-4159", name: "Jean Dupont", country: "France", department: "Operations", title: "Facility Supervisor", salary: 4800, status: "Active" }
+      { id: "EMP-4150", name: "Amit Sharma", country: "India", department: "Engineering", title: "Senior DevOps Engineer", salary: 145000, status: "Active" },
+      { id: "EMP-4151", name: "Sneha Patel", country: "India", department: "Product", title: "Lead UX Researcher", salary: 135000, status: "Active" },
+      { id: "EMP-4152", name: "Rohan Das", country: "India", department: "Sales", title: "Account Executive", salary: 95000, status: "Active" },
+      { id: "EMP-4153", name: "Ananya Joshi", country: "India", department: "Operations", title: "Local Coordinator", salary: 85000, status: "Active" },
+      { id: "EMP-4154", name: "Karan Gupta", country: "India", department: "Marketing", title: "Content strategist", salary: 110000, status: "Active" },
+      { id: "EMP-4155", name: "Siddharth Nair", country: "India", department: "Finance", title: "Corporate Controller", salary: 165000, status: "Active" },
+      { id: "EMP-4156", name: "Sai Gupta", country: "India", department: "Engineering", title: "Media Architect", salary: 158000, status: "Active" },
+      { id: "EMP-4157", name: "Amit Gupta", country: "India", department: "Engineering", title: "QA Engineer", salary: 120000, status: "Inactive" },
+      { id: "EMP-4158", name: "Priya Patel", country: "India", department: "Engineering", title: "Distinguished Fellow", salary: 225000, status: "Active" },
+      { id: "EMP-4159", name: "Karan Patel", country: "India", department: "Operations", title: "Facility Supervisor", salary: 85000, status: "Active" }
     ];
 
     if (!confirm("Would you like to auto-hydrate the directory with 10 high-density synthetic corporate profiles? This triggers Firestore background batch writes.")) return;
@@ -402,11 +402,6 @@ export default function ManpowerView({
                 }`}
             >
               <option value="All">All Countries</option>
-              <option value="Singapore">Singapore</option>
-              <option value="Germany">Germany</option>
-              <option value="United States">United States</option>
-              <option value="Japan">Japan</option>
-              <option value="France">France</option>
               <option value="India">India</option>
             </select>
           </div>
@@ -622,11 +617,6 @@ export default function ManpowerView({
                     onChange={(e) => setFormCountry(e.target.value as string)}
                     sx={{ fontWeight: "bold" }}
                   >
-                    <MenuItem value="Singapore">Singapore 🇸🇬</MenuItem>
-                    <MenuItem value="Germany">Germany 🇩🇪</MenuItem>
-                    <MenuItem value="United States">United States 🇺🇸</MenuItem>
-                    <MenuItem value="Japan">Japan 🇯🇵</MenuItem>
-                    <MenuItem value="France">France 🇫🇷</MenuItem>
                     <MenuItem value="India">India 🇮🇳</MenuItem>
                   </Select>
                 </FormControl>

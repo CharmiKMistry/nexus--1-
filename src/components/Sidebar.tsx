@@ -57,6 +57,7 @@ export default function Sidebar({
   const menuItems = [
     { id: "dashboard", label: "Dashboard", translationKey: "dashboard", icon: DashboardIcon },
     { id: "manpower", label: "Employee Directory", translationKey: "manpower", icon: PeopleIcon },
+    { id: "client_timesheets", label: "Client Timesheets", translationKey: "client_timesheets", icon: AssignmentIcon },
     { id: "events", label: "Payroll Event Center", translationKey: "payroll_events", icon: AssignmentIcon },
     { id: "upload", label: "Smart Excel Upload", translationKey: "smart_upload", icon: UploadFileIcon },
     { id: "validation", label: "Validation Center", translationKey: "validation", icon: GppBadIcon },
@@ -85,6 +86,7 @@ export default function Sidebar({
       case "dashboard":
       case "manpower":
       case "copilot":
+      case "client_timesheets":
         return true; // Basic utility views accessible by all registered workforce
       case "upload":
       case "events":

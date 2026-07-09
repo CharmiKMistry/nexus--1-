@@ -25,8 +25,8 @@ interface MongoConfig {
 let mongoClient: MongoClient | null = null;
 let mongoDb: any = null;
 let dbConfig: MongoConfig = {
-  uri: process.env.MONGODB_URI || "",
-  dbName: "nexus"
+  uri: process.env.MONGODB_URI || "mongodb://localhost:27017/nexus-v1",
+  dbName: "nexus-v1"
 };
 
 // Try to load saved config
@@ -62,7 +62,42 @@ let localDatabase: {
   loginLogs: []
 };
 
-// Load or seed local JSON database
+// Helper to parse simple CSV files safely
+function parseCSVFile(filePath: string): any[] {
+  if (!fs.existsSync(filePath)) {
+    console.warn(`CSV File not found: ${filePath}`);
+    return [];
+  }
+  try {
+    const rawContent = fs.readFileSync(filePath, "utf-8");
+    const lines = rawContent.split(/\r?\n/).filter(line => line.trim().length > 0);
+    if (lines.length === 0) return [];
+    
+    const headers = lines[0].split(",").map(h => h.trim());
+    const results = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      const currentline = lines[i].split(",").map(v => v.trim());
+      if (currentline.length < headers.length) continue;
+      
+      const obj: any = {};
+      for (let j = 0; j < headers.length; j++) {
+        let val: any = currentline[j];
+        if (val && !isNaN(val as any)) {
+          val = Number(val);
+        }
+        obj[headers[j]] = val;
+      }
+      results.push(obj);
+    }
+    return results;
+  } catch (err) {
+    console.error(`Error parsing CSV file ${filePath}:`, err);
+    return [];
+  }
+}
+
+// Load or seed local JSON database with user's specific CSV data
 function loadLocalDatabase() {
   if (fs.existsSync(LOCAL_DB_FILE)) {
     try {
@@ -71,206 +106,144 @@ function loadLocalDatabase() {
       if (!localDatabase.users) localDatabase.users = [];
       if (!localDatabase.permissions) localDatabase.permissions = [];
       if (!localDatabase.loginLogs) localDatabase.loginLogs = [];
-      
-      if (localDatabase.users.length > 0 && localDatabase.permissions.length > 0) {
-        console.log("Loaded dynamic local JSON database with enterprise user modules.");
-        return;
-      }
     } catch (err) {
       console.error("Failed to parse local_database.json, re-seeding:", err);
     }
   }
-  
-  // Seed initial data if file doesn't exist or is missing user/permission module
-  const sgReadiness = 100;
-  const deReadiness = 92;
-  const usReadiness = 74;
-  const jpReadiness = 89;
-  const frReadiness = 65;
 
+  // Always reload the user's specific master data from CSVs
+  const csvEmployees = parseCSVFile(path.join(process.cwd(), "employees_master.csv"));
+  if (csvEmployees.length > 0) {
+    localDatabase.employees = csvEmployees.map(emp => ({
+      id: emp["PS Number"] || emp["PSNumber"],
+      name: emp["Employee Name"] || emp["EmployeeName"],
+      email: emp["Company Email"] || emp["CompanyEmail"],
+      country: "India",
+      hub: emp["Hub"] || "Mumbai",
+      department: emp["Department"] || "Engineering",
+      title: emp["Designation"] || "Specialist",
+      grade: emp["Grade"] || "G3",
+      businessUnit: emp["Business Unit"] || emp["BusinessUnit"] || "Digital",
+      employmentType: emp["Employment Type"] || emp["EmploymentType"] || "Permanent",
+      joiningDate: emp["Date of Joining"] || emp["DateOfJoining"] || "2023-01-01",
+      currency: "INR",
+      salary: Number(emp["Base Salary"] || emp["BaseSalary"] || 0),
+      status: emp["Status"] || "Active",
+      manager: emp["Manager"] || ""
+    }));
+  }
+
+  // Load timesheets to generate dynamic validations & reconciliations
+  const csvTimesheets = parseCSVFile(path.join(process.cwd(), "timesheets.csv"));
+  const csvSeparations = parseCSVFile(path.join(process.cwd(), "separations.csv"));
+  const csvVariablePay = parseCSVFile(path.join(process.cwd(), "variable_pay.csv"));
+
+  // Generate dynamic AI validation results
+  const validationList: any[] = [];
+  
+  // 1. Check timesheets for excessive working hours (> 12 hours)
+  csvTimesheets.forEach((ts, idx) => {
+    const totalHours = Number(ts["Total Hours"] || ts["TotalHours"] || 0);
+    if (totalHours > 12) {
+      const psNum = ts["PS Number"] || ts["PSNumber"];
+      const empName = ts["Employee Name"] || ts["EmployeeName"];
+      validationList.push({
+        id: `val-hours-${idx}`,
+        employeeId: psNum,
+        employeeName: empName,
+        country: "India",
+        issueType: "Daily Limit Violation",
+        severity: "High",
+        confidenceScore: 99,
+        explanation: `Worked ${totalHours} hours on ${ts["Date"]}, exceeding the 12-hour daily absolute threshold under India Factories Act.`,
+        recommendedResolution: "Reduce shift duration on subsequent days or offer compensatory double-rate pay.",
+        status: "Pending"
+      });
+    }
+  });
+
+  // 2. Check separations for payments/activity for terminated employees
+  csvSeparations.forEach((sep, idx) => {
+    const psNum = sep["PS Number"] || sep["PSNumber"];
+    const empName = sep["Employee Name"] || sep["EmployeeName"];
+    validationList.push({
+      id: `val-sep-${idx}`,
+      employeeId: psNum,
+      employeeName: empName,
+      country: "India",
+      issueType: "Terminated Employee Activity",
+      severity: "Critical",
+      confidenceScore: 100,
+      explanation: `Employee ${empName} was separated on ${sep["Separation Date"]}, but is flagged in the active India payroll run. Reason: ${sep["Reason for Separation"] || "None"}`,
+      recommendedResolution: "Immediately hold payment run and trigger a manual clawback/payment hold instruction.",
+      status: "Pending"
+    });
+  });
+
+  localDatabase.validationResults = validationList.slice(0, 15); // limit size for UI comfort
+
+  // Generate dynamic AI reconciliation results
+  const reconciliationList: any[] = [];
+
+  // 1. Reconcile timesheet OT hours variance
+  csvTimesheets.filter(ts => Number(ts["OT Hours"] || ts["OTHours"] || 0) > 3).forEach((ts, idx) => {
+    const psNum = ts["PS Number"] || ts["PSNumber"];
+    const empName = ts["Employee Name"] || ts["EmployeeName"];
+    const otHours = Number(ts["OT Hours"] || ts["OTHours"] || 0);
+    reconciliationList.push({
+      id: `rec-ot-${idx}`,
+      employeeId: psNum,
+      name: empName,
+      source: `Timesheets (${ts["Total Hours"]}h)`,
+      target: "HRMS (8h Standard)",
+      discrepancy: `+${otHours}.0 hrs OT Variance`,
+      type: "Overtime Reconciliation",
+      confidence: 96,
+      aiRecommendation: `Authorize ${otHours} hours overtime pay in INR. Verified against automatic badge-in office logs.`,
+      status: "Pending"
+    });
+  });
+
+  // 2. Reconcile Variable pay component
+  csvVariablePay.forEach((vp, idx) => {
+    const psNum = vp["PS Number"] || vp["PSNumber"];
+    const empName = vp["Name of employee"] || vp["NameOfEmployee"] || "Employee";
+    const amount = Number(vp["Amount in local currency"] || vp["AmountInLocalCurrency"] || 0);
+    reconciliationList.push({
+      id: `rec-vp-${idx}`,
+      employeeId: psNum,
+      name: empName,
+      source: `Variable Pay (₹${amount.toLocaleString()})`,
+      target: "HRMS Base Allowance",
+      discrepancy: `+₹${amount.toLocaleString()} Discrepancy`,
+      type: "Variable Pay Reconciliation",
+      confidence: 92,
+      aiRecommendation: `Authorize variable pay payout of ₹${amount.toLocaleString()} after confirming India Performance Rating scale sign-off.`,
+      status: "Pending"
+    });
+  });
+
+  localDatabase.reconciliationResults = reconciliationList.slice(0, 15);
+
+  // Set country list with real business parameters
   localDatabase.countries = [
-    {
-      id: "sg",
-      name: "Singapore",
-      flag: "🇸🇬",
-      currency: "SGD (S$)",
-      workingHours: 44,
-      taxRules: "Progressive statutory tax rate from 0% up to 22%. CPF contribution required (up to 20% employee, up to 17% employer).",
-      overtimePolicy: "1.5x hourly rate for hours worked over 44 per week. Excludes executive/managerial roles.",
-      leavePolicy: "Minimum 14 days statutory paid annual leave + 14 days paid sick leave.",
-      holidayCalendar: "11 Gazetted Public Holidays (Chinese New Year, Hari Raya, National Day, Christmas, etc.)",
-      payrollCalendar: "Monthly payroll run on the 25th of each month.",
-      workflow: ["HR Draft", "Finance Review", "Country Admin Certification", "Executive Release"],
-      readinessScore: sgReadiness,
-      complianceScore: 100,
-      dataQualityScore: 98,
-      status: "Completed",
-      riskLevel: "Low"
-    },
-    {
-      id: "de",
-      name: "Germany",
-      flag: "🇩🇪",
-      currency: "EUR (€)",
-      workingHours: 40,
-      taxRules: "Statutory income tax (Lohnsteuer) from 14% to 45%. Solidaritätszuschlag (5.5%). Health, pension, and unemployment social security (~20% employee, ~20% employer).",
-      overtimePolicy: "Max daily hours 8h. Extendable to 10h if average is 8h over 6 months. 11h consecutive rest required.",
-      leavePolicy: "Minimum 20 days paid annual leave based on 5-day week.",
-      holidayCalendar: "9-13 Public Holidays depending on federal state.",
-      payrollCalendar: "Monthly payroll run on the 28th of each month.",
-      workflow: ["HR Draft", "Compliance Verification", "Country Admin Certification", "Executive Release"],
-      readinessScore: deReadiness,
-      complianceScore: 94,
-      dataQualityScore: 91,
-      status: "Pending Approval",
-      riskLevel: "Medium"
-    },
-    {
-      id: "us",
-      name: "United States",
-      flag: "🇺🇸",
-      currency: "USD ($)",
-      workingHours: 40,
-      taxRules: "Federal income tax (10% to 37%), FICA (6.2% Social Security, 1.45% Medicare for both employee & employer), State and Local income taxes.",
-      overtimePolicy: "1.5x hourly rate for non-exempt employees working over 40 hours per week under FLSA rules.",
-      leavePolicy: "No statutory minimum paid leave. Left to employer/state policies.",
-      holidayCalendar: "11 Federal Holidays (New Year's, Memorial Day, July 4th, Thanksgiving, Christmas, etc.)",
-      payrollCalendar: "Semi-monthly on the 15th and last business day of the month.",
-      workflow: ["HR Draft", "Finance Review", "Audit Clearance", "Executive Release"],
-      readinessScore: usReadiness,
-      complianceScore: 82,
-      dataQualityScore: 86,
-      status: "Validating",
-      riskLevel: "High"
-    },
-    {
-      id: "jp",
-      name: "Japan",
-      flag: "🇯🇵",
-      currency: "JPY (¥)",
-      workingHours: 40,
-      taxRules: "National income tax (5% to 45%), Local inhabitant tax (10%), Social Insurance (Health, Pension, Long-term care, Employment).",
-      overtimePolicy: "Statutory premium is 1.25x for regular overtime, 1.35x for holiday work, 1.5x for late-night overtime (10pm-5am).",
-      leavePolicy: "10 days paid leave after 6 months of service, scaling to 20 days.",
-      holidayCalendar: "16 National Holidays (Golden Week, Mountain Day, Respect for the Aged Day, etc.)",
-      payrollCalendar: "Monthly payroll run on the 25th of each month.",
-      workflow: ["HR Draft", "Compliance Verification", "Executive Release"],
-      readinessScore: jpReadiness,
-      complianceScore: 95,
-      dataQualityScore: 90,
-      status: "Pending Verification",
-      riskLevel: "Low"
-    },
-    {
-      id: "fr",
-      name: "France",
-      flag: "🇫🇷",
-      currency: "EUR (€)",
-      workingHours: 35,
-      taxRules: "Progressive personal tax, substantial employer social contributions (~45% of base wage), and employee contributions (~22%).",
-      overtimePolicy: "Hours 36-43 paid at 1.25x premium. Hours 44+ paid at 1.5x premium. RTT days offered for working hours over 35h.",
-      leavePolicy: "5 weeks (25 working days) paid annual leave + supplementary RTT days.",
-      holidayCalendar: "11 Public Holidays (Bastille Day, Armistice Day, Labour Day, etc.)",
-      payrollCalendar: "Monthly payroll run on the 30th of each month.",
-      workflow: ["HR Draft", "Finance Review", "Country Admin Certification", "Executive Release"],
-      readinessScore: frReadiness,
-      complianceScore: 78,
-      dataQualityScore: 81,
-      status: "Draft",
-      riskLevel: "Medium"
-    },
     {
       id: "in",
       name: "India",
       flag: "🇮🇳",
       currency: "INR (₹)",
       workingHours: 48,
-      taxRules: "Income tax slabs from 5% to 30% under New/Old Tax Regime. EPF contributions required (12% employee, 12% employer on basic pay). Professional Tax varies by state.",
-      overtimePolicy: "Double the ordinary hourly wage rate for any work performed beyond 9 hours in a day or 48 hours in a week under Factories Act.",
-      leavePolicy: "Minimum 15 days of earned leave (EL), 12 days of sick leave (SL) and casual leave (CL) as per Shops & Establishments Act.",
-      holidayCalendar: "3 Mandatory National Holidays (Republic Day, Independence Day, Gandhi Jayanti) + 10-15 Gazetted and Restricted Public Holidays based on state.",
-      payrollCalendar: "Monthly payroll run on the last working day of each month.",
+      taxRules: "EPF contribution required (12% employee/employer). Progressive income tax slabs.",
+      overtimePolicy: "Double the ordinary hourly wage rate for work beyond 9 hours daily.",
+      leavePolicy: "Minimum 15 days earned leave + statutory sick leave.",
+      holidayCalendar: "3 Mandatory National Holidays + regional state holidays.",
+      payrollCalendar: "Monthly payroll run on the last working day.",
       workflow: ["HR Draft", "Finance Review", "Country Admin Certification", "Executive Release"],
       readinessScore: 100,
       complianceScore: 100,
       dataQualityScore: 100,
       status: "Completed",
       riskLevel: "Low"
-    }
-  ];
-
-  localDatabase.employees = [
-    { id: "EMP-1042", name: "Anna Weber", country: "Germany", department: "Engineering", title: "Principal Architect", salary: 8500, status: "Active" },
-    { id: "EMP-2109", name: "Marcus Tan", country: "Singapore", department: "Product", title: "Product Lead", salary: 7800, status: "Active" },
-    { id: "EMP-0098", name: "Sarah Jenkins", country: "United States", department: "Sales", title: "VP Global Sales", salary: 12500, status: "Active" },
-    { id: "EMP-3045", name: "Hiroshi Sato", country: "Japan", department: "Operations", title: "Director of Ops", salary: 11000, status: "Active" },
-    { id: "EMP-1204", name: "Pierre Dubois", country: "France", department: "Marketing", title: "Senior Manager", salary: 6200, status: "Active" },
-    { id: "EMP-8044", name: "Amit Patel", country: "India", department: "Engineering", title: "Lead Software Engineer", salary: 120000, status: "Active" }
-  ];
-
-  localDatabase.validationResults = [
-    {
-      id: "val-1",
-      employeeId: "EMP-1042",
-      employeeName: "Anna Weber",
-      country: "Germany",
-      issueType: "Overtime Violations",
-      severity: "High",
-      confidenceScore: 98,
-      explanation: "Worked 11.5 hours in a single shift, exceeding the 10-hour daily threshold mandated by the Germany Working Time Act (Arbeitszeitgesetz).",
-      recommendedResolution: "Convert excess 1.5 hours into TOIL (Time-Off-In-Lieu) balance and issue a formal compliance bypass log.",
-      status: "Pending"
-    },
-    {
-      id: "val-2",
-      employeeId: "EMP-2109",
-      employeeName: "Marcus Tan",
-      country: "Singapore",
-      issueType: "CPF Contribution Mismatch",
-      severity: "Medium",
-      confidenceScore: 95,
-      explanation: "HRMS records employee age as 54, triggering 20% employee CPF rate. Active payroll run calculated CPF at 15% based on stale Workday age bracket.",
-      recommendedResolution: "Apply retroactive adjustment S$ 250.00 to align payroll run with the true HRMS age status.",
-      status: "Pending"
-    },
-    {
-      id: "val-3",
-      employeeId: "EMP-0098",
-      employeeName: "Sarah Jenkins",
-      country: "United States",
-      issueType: "Base Salary Variance",
-      severity: "High",
-      confidenceScore: 92,
-      explanation: "Ingested base salary of $12,500.00 for the month is 25% higher than the HRMS active contract base salary of $10,000.00.",
-      recommendedResolution: "Reject the ingested timesheet rate and revert to the contract base salary, or request Compensation Team approval.",
-      status: "Pending"
-    }
-  ];
-
-  localDatabase.reconciliationResults = [
-    {
-      id: "rec-1",
-      employeeId: "EMP-1042",
-      name: "Anna Weber",
-      source: "Timesheets (168h)",
-      target: "HRMS (160h)",
-      discrepancy: "+8.0 hrs Variance",
-      type: "Overtime Reconciliation",
-      confidence: 94,
-      aiRecommendation: "Authorize 8 hours overtime pay. Verified against automatic card badge-in security logs showing entry at 08:02 and exit at 18:35.",
-      status: "Pending"
-    },
-    {
-      id: "rec-2",
-      employeeId: "EMP-2109",
-      name: "Marcus Tan",
-      source: "Claims (S$ 420.00)",
-      target: "Policy Rule (S$ 300.00 Max)",
-      discrepancy: "S$ 120.00 Policy Overrun",
-      type: "Expense Inconsistency",
-      confidence: 89,
-      aiRecommendation: "Approve S$ 300.00 standard limit and route S$ 120.00 exception for Executive Sign-off due to offsite client dinner.",
-      status: "Pending"
     }
   ];
 
@@ -281,10 +254,11 @@ function loadLocalDatabase() {
       user: "System",
       role: "Super Admin",
       action: "Database Initialized",
-      details: "Seeded initial dynamic compliance rosters, countries, and audit results."
+      details: "Seeded and loaded actual master directories, timesheets, and reconciliation items from user's files."
     }
   ];
 
+  saveLocalDatabase();
   localDatabase.users = [
     {
       id: "user-1",
@@ -404,21 +378,33 @@ async function connectToMongo(uri: string, dbName: string = "nexus") {
     } catch (e) {}
   }
 
+  // Parse database name from URI if it's there
+  let targetDbName = dbName;
+  try {
+    const parsed = new URL(uri);
+    const pathDb = parsed.pathname.replace(/^\//, "");
+    if (pathDb) {
+      targetDbName = pathDb;
+    }
+  } catch (e) {
+    // Ignore URL parsing errors and fallback to dbName
+  }
+
   mongoClient = new MongoClient(uri, {
     connectTimeoutMS: 5000,
     serverSelectionTimeoutMS: 5000
   });
 
   await mongoClient.connect();
-  mongoDb = mongoClient.db(dbName);
-  console.log(`Successfully connected to MongoDB database: ${dbName}`);
+  mongoDb = mongoClient.db(targetDbName);
+  console.log(`Successfully connected to MongoDB database: ${targetDbName}`);
 
   // Auto-seed MongoDB if collections are empty
   await seedMongoIfEmpty();
   await ensureSuperAdminInMongo();
 
   // Save successful config
-  dbConfig = { uri, dbName };
+  dbConfig = { uri, dbName: targetDbName };
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(dbConfig, null, 2), "utf-8");
 }
 
@@ -1223,10 +1209,76 @@ app.post("/api/countries", async (req, res) => {
 app.get("/api/employees", async (req, res) => {
   try {
     if (mongoDb) {
-      const list = await mongoDb.collection("employees").find({}).toArray();
+      let list: any[] = [];
+      try {
+        const collections = await mongoDb.listCollections().toArray();
+        const collectionNames = collections.map((c: any) => c.name);
+        
+        if (collectionNames.includes("manpower_master")) {
+          list = await mongoDb.collection("manpower_master").find({}).toArray();
+        } else if (collectionNames.includes("employees")) {
+          list = await mongoDb.collection("employees").find({}).toArray();
+        } else {
+          list = await mongoDb.collection("employees").find({}).toArray();
+        }
+      } catch (err) {
+        // Fallback if listCollections fails
+        list = await mongoDb.collection("employees").find({}).toArray();
+      }
       return res.json(list);
     }
     return res.json(localDatabase.employees);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Timesheets & Client Portal API
+app.get("/api/timesheets", async (req, res) => {
+  try {
+    const list = parseCSVFile(path.join(process.cwd(), "timesheets.csv"));
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/timesheets", async (req, res) => {
+  try {
+    const entry = req.body;
+    const list = parseCSVFile(path.join(process.cwd(), "timesheets.csv"));
+    list.push(entry);
+    
+    const headers = ["PS Number", "Employee Name", "Date", "Total Hours", "OT Hours", "Approval Status", "Client Name"];
+    const csvContent = [
+      headers.join(","),
+      ...list.map(row => headers.map(h => {
+        const key = Object.keys(row).find(k => k.toLowerCase().replace(/\s+/g, '') === h.toLowerCase().replace(/\s+/g, ''));
+        return key !== undefined && row[key] !== undefined ? row[key] : "";
+      }).join(","))
+    ].join("\n");
+    
+    fs.writeFileSync(path.join(process.cwd(), "timesheets.csv"), csvContent, "utf-8");
+    loadLocalDatabase(); // refresh dynamic insights
+    return res.json({ success: true, entry });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/separations", async (req, res) => {
+  try {
+    const list = parseCSVFile(path.join(process.cwd(), "separations.csv"));
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/variable-pay", async (req, res) => {
+  try {
+    const list = parseCSVFile(path.join(process.cwd(), "variable_pay.csv"));
+    return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

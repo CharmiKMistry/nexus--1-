@@ -25,29 +25,11 @@ interface ApprovalCenterProps {
 }
 
 const defaultChecklists = {
-  sg: [
-    { label: "Verify Marcus Tan's retroactive CPF 5% difference applied (S$ 250)", checked: true },
-    { label: "Audit Singapore Workday base salary feed parity", checked: true },
-    { label: "Generate IRAS tax declaration pre-audit package", checked: true }
-  ],
-  de: [
-    { label: "German daily working hours compliance check (Arbeitszeitgesetz)", checked: true },
-    { label: "Convert Anna Weber's 1.5 excess hours to TOIL shift balance", checked: false },
-    { label: "German social security insurance contribution match check (AOK)", checked: true },
-    { label: "Resolve duplicate Elena Rostova entries between SAP & Workday", checked: false }
-  ],
-  us: [
-    { label: "FLSA Overtime exemptions review (earning threshold $844/week)", checked: false },
-    { label: "Verify John Doe's non-exempt 1.5x Overtime premium premium rate", checked: false },
-    { label: "Cross-check US internal timesheet logs vs external Fieldglass feeds", checked: true }
-  ],
-  jp: [
-    { label: "Confirm MyNumber Tax ID is ingested for Hiroshi Sato", checked: true },
-    { label: "Calculate late-night overtime premium multipliers (1.5x statutory check)", checked: true }
-  ],
-  fr: [
-    { label: "Validate French statutory RTT (Reduction of Working Time) allocation", checked: false },
-    { label: "Audit base salary minimum threshold according to Syntec Agreement", checked: false }
+  in: [
+    { label: "Verify Amit Gupta's retroactive EPF 12% contribution matching (₹22,200)", checked: true },
+    { label: "Audit India Factories Act daily/weekly working hours limit (9 hrs shift/48 hrs week)", checked: true },
+    { label: "Review PAN database ingestion and Tax Slab compliance checks", checked: true },
+    { label: "Resolve duplicate Sai Gupta entries between SAP & Workday HRMS", checked: false }
   ]
 };
 
@@ -58,7 +40,7 @@ export default function ApprovalCenter({
   currentRole 
 }: ApprovalCenterProps) {
   
-  const [selectedCountryId, setSelectedCountryId] = useState<string>("de"); // Default to Germany
+  const [selectedCountryId, setSelectedCountryId] = useState<string>("in"); // Default to India
   const [signatureName, setSignatureName] = useState("");
   const [signatureComments, setSignatureComments] = useState("");
   

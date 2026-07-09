@@ -127,9 +127,9 @@ export default function DataIntegrationView({
 
   // Ingestion history items
   const [historyItems, setHistoryItems] = useState<IngestionHistoryItem[]>([
-    { id: "h-1", fileName: "Munich_Overtime_June2026.csv", templateName: "Overtime", recordsCount: 12, time: "2026-07-06 03:15", status: "Completed", mappingScore: 100, user: "Ronak Surve" },
-    { id: "h-2", fileName: "SG_Product_Bonuses.xlsx", templateName: "Variable Pay", recordsCount: 8, time: "2026-07-05 14:22", status: "Completed", mappingScore: 98, user: "Elena Müller" },
-    { id: "h-3", fileName: "US_SalesAwards_Q2.xlsx", templateName: "Sales Award", recordsCount: 15, time: "2026-07-04 09:40", status: "Completed", mappingScore: 100, user: "Marcus Tan" }
+    { id: "h-1", fileName: "Mumbai_Overtime_June2026.csv", templateName: "Overtime", recordsCount: 12, time: "2026-07-06 03:15", status: "Completed", mappingScore: 100, user: "Ronak Surve" },
+    { id: "h-2", fileName: "IN_Product_Bonuses.xlsx", templateName: "Variable Pay", recordsCount: 8, time: "2026-07-05 14:22", status: "Completed", mappingScore: 98, user: "Ronak Surve" },
+    { id: "h-3", fileName: "IN_SalesAwards_Q2.xlsx", templateName: "Sales Award", recordsCount: 15, time: "2026-07-04 09:40", status: "Completed", mappingScore: 100, user: "Sai Gupta" }
   ]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,7 +142,7 @@ export default function DataIntegrationView({
       description: "Hourly overtime payments matching attendance logs",
       version: 1,
       isSystem: true,
-      currency: "EUR",
+      currency: "INR",
       requiredFields: [
         { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
         { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
@@ -152,11 +152,10 @@ export default function DataIntegrationView({
         { key: "otDate", label: "OT Date", type: "date", isMandatory: true }
       ],
       countryValidations: [
-        { country: "Germany", field: "overtimeHours", condition: "max_hours", value: "10", errorMessage: "Germany working laws limit overtime to maximum 10 hours daily." },
-        { country: "Singapore", field: "overtimeHours", condition: "max_hours", value: "72", errorMessage: "Singapore Employment Act limits monthly OT to 72 hours." }
+        { country: "India", field: "overtimeHours", condition: "max_hours", value: "50", errorMessage: "India Factories Act limits quarterly overtime to 50 hours." }
       ],
       aiRules: [
-        "Flag overtime records with total hours worked in a week > 40 as outliers.",
+        "Flag overtime records with total hours worked in a week > 48 as outliers under the Factories Act.",
         "Ensure OT hours do not exceed company standard daily quotas and match average card swipes."
       ],
       approvalWorkflow: ["Operations Lead", "HR Controller", "Payroll Manager"]
@@ -164,22 +163,22 @@ export default function DataIntegrationView({
     {
       id: "tmpl_sales_award",
       name: "Sales Award",
-      description: "Global Sales and Performance Commission Payouts",
+      description: "Sales and Performance Commission Payouts",
       version: 1,
       isSystem: true,
-      currency: "USD",
+      currency: "INR",
       requiredFields: [
         { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
         { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
         { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "awardAmount", label: "Commission (USD)", type: "number", isMandatory: true },
+        { key: "awardAmount", label: "Commission (INR)", type: "number", isMandatory: true },
         { key: "quarter", label: "Fiscal Quarter", type: "string", isMandatory: true }
       ],
       countryValidations: [
-        { country: "Global", field: "awardAmount", condition: "max_amount", value: "10000", errorMessage: "Sales Awards above $10,000 USD require special Executive Board sign-off." }
+        { country: "India", field: "awardAmount", condition: "max_amount", value: "100000", errorMessage: "Sales Awards above ₹1,00,000 INR require special Executive Board sign-off." }
       ],
       aiRules: [
-        "Convert original USD award amount into localized currencies using dynamic XE currency ratios.",
+        "Convert or check award amount against budget limits.",
         "Cross reference with CRM Salesforce closed-won quotas to flag unauthorized payouts."
       ],
       approvalWorkflow: ["Sales VP", "Finance Director"]
@@ -190,7 +189,7 @@ export default function DataIntegrationView({
       description: "Employee onboarding salary inputs and registration parameters",
       version: 1,
       isSystem: true,
-      currency: "USD",
+      currency: "INR",
       requiredFields: [
         { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
         { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
@@ -201,11 +200,11 @@ export default function DataIntegrationView({
         { key: "email", label: "Corporate Email Address", type: "string", isMandatory: true }
       ],
       countryValidations: [
-        { country: "Global", field: "email", condition: "format_email", value: "domain", errorMessage: "Corporate email must match standard domain formatting." },
-        { country: "Global", field: "employeeId", condition: "not_duplicate_ps", value: "unique", errorMessage: "This Personnel ID is already registered under an active corporate contract." }
+        { country: "India", field: "email", condition: "format_email", value: "domain", errorMessage: "Corporate email must match standard domain formatting." },
+        { country: "India", field: "employeeId", condition: "not_duplicate_ps", value: "unique", errorMessage: "This Personnel ID is already registered under an active corporate contract." }
       ],
       aiRules: [
-        "Detect if employee onboarding data contains matching duplicate PS numbers in other regions.",
+        "Detect if employee onboarding data contains matching duplicate PS numbers.",
         "Validate salary bands are fully aligned with the designated grade scale constraints."
       ],
       approvalWorkflow: ["Talent Acquisition", "Compensation Partner", "HR Ops VP"]
@@ -359,7 +358,7 @@ export default function DataIntegrationView({
     setColumnMappings([]);
 
     if (scenario === "overtime_outliers") {
-      setFileName("Munich_Timecards_Germany_July.xlsx");
+      setFileName("Mumbai_Timecards_India_July.xlsx");
       setUploadState("uploaded");
       
       const overtimeTmpl = templates.find(t => t.id === "tmpl_overtime") || DEFAULT_TEMPLATES[0];
@@ -371,7 +370,7 @@ export default function DataIntegrationView({
         { sourceHeader: "Employee_Name", targetField: "employeeName", confidence: 99 },
         { sourceHeader: "Target_Region", targetField: "country", confidence: 95 },
         { sourceHeader: "OT_Approved_Hours", targetField: "overtimeHours", confidence: 91 },
-        { sourceHeader: "Hourly_Base_EUR", targetField: "hourlyRate", confidence: 96 },
+        { sourceHeader: "Hourly_Base_INR", targetField: "hourlyRate", confidence: 96 },
         { sourceHeader: "Log_Date", targetField: "otDate", confidence: 94 }
       ]);
 
@@ -379,22 +378,22 @@ export default function DataIntegrationView({
       setParsedRows([
         {
           id: "row-1",
-          data: { employeeId: "EMP-1042", employeeName: "Anna Weber", country: "Germany", overtimeHours: 12, hourlyRate: 45, otDate: "2026-07-02" },
-          errors: ["Germany daily working laws limit overtime to maximum 10 hours daily. (12 hours exceeds statutory limit)"],
+          data: { employeeId: "EMP-1042", employeeName: "Amit Gupta", country: "India", overtimeHours: 12, hourlyRate: 450, otDate: "2026-07-02" },
+          errors: ["Worked 12.0 hours in a single shift, exceeding the 9-hour daily threshold mandated by the India Factories Act."],
           warnings: ["Overtime hours are 40% higher than employee's normal daily median schedule."],
           isValid: false
         },
         {
           id: "row-2",
           // Demonstrating high hours outlier
-          data: { employeeId: "EMP-2109", employeeName: "Marcus Tan", country: "Germany", overtimeHours: 48, hourlyRate: 40, otDate: "2026-07-03" },
-          errors: ["Germany daily working laws limit overtime to maximum 10 hours daily. (48 hours exceeds statutory limit)"],
-          warnings: ["AI Outlier Detection: Unusually high overtime hours (48 hours) flagged. Align with attendance logs recommended."],
+          data: { employeeId: "EMP-2109", employeeName: "Sai Gupta", country: "India", overtimeHours: 54, hourlyRate: 400, otDate: "2026-07-03" },
+          errors: ["Total quarterly overtime hours exceed the 50-hour limit under the Factories Act."],
+          warnings: ["AI Outlier Detection: Unusually high overtime hours (54 hours) flagged. Align with attendance logs recommended."],
           isValid: false
         },
         {
           id: "row-3",
-          data: { employeeId: "EMP-3045", employeeName: "Hiroshi Sato", country: "Singapore", overtimeHours: 5, hourlyRate: 35, otDate: "2026-07-01" },
+          data: { employeeId: "EMP-3045", employeeName: "Rohan Sharma", country: "India", overtimeHours: 5, hourlyRate: 350, otDate: "2026-07-01" },
           errors: [],
           warnings: [],
           isValid: true
@@ -402,14 +401,14 @@ export default function DataIntegrationView({
         {
           id: "row-4",
           // Invalid employee name (Missing mandatory) & Missing ID format
-          data: { employeeId: "", employeeName: "", country: "Germany", overtimeHours: 8, hourlyRate: 45, otDate: "2026-07-04" },
+          data: { employeeId: "", employeeName: "", country: "India", overtimeHours: 8, hourlyRate: 450, otDate: "2026-07-04" },
           errors: ["Personnel ID is a mandatory field.", "Full Name is a mandatory field."],
           warnings: [],
           isValid: false
         },
         {
           id: "row-5",
-          data: { employeeId: "EMP-1204", employeeName: "Pierre Dubois", country: "France", overtimeHours: 6, hourlyRate: 38, otDate: "2026-07-05" },
+          data: { employeeId: "EMP-1204", employeeName: "Ananya Joshi", country: "India", overtimeHours: 6, hourlyRate: 380, otDate: "2026-07-05" },
           errors: [],
           warnings: [],
           isValid: true
@@ -418,7 +417,7 @@ export default function DataIntegrationView({
     } 
     
     else if (scenario === "sales_currencies") {
-      setFileName("Global_Commission_Awards_Q2.csv");
+      setFileName("India_Commission_Awards_Q2.csv");
       setUploadState("uploaded");
 
       const salesTmpl = templates.find(t => t.id === "tmpl_sales_award") || DEFAULT_TEMPLATES[1];
@@ -428,31 +427,30 @@ export default function DataIntegrationView({
         { sourceHeader: "Personnel_No", targetField: "employeeId", confidence: 100 },
         { sourceHeader: "Full_Name", targetField: "employeeName", confidence: 98 },
         { sourceHeader: "Region", targetField: "country", confidence: 97 },
-        { sourceHeader: "Payout_USD", targetField: "awardAmount", confidence: 99 },
+        { sourceHeader: "Payout_INR", targetField: "awardAmount", confidence: 99 },
         { sourceHeader: "Quarter_Ref", targetField: "quarter", confidence: 95 }
       ]);
 
       setParsedRows([
         {
           id: "row-1",
-          data: { employeeId: "EMP-2109", employeeName: "Marcus Tan", country: "Singapore", awardAmount: 15000, quarter: "Q2 2026" },
+          data: { employeeId: "EMP-2109", employeeName: "Sai Gupta", country: "India", awardAmount: 150000, quarter: "Q2 2026" },
           errors: [],
           warnings: [
-            "AI Commission Outlier: Payout of $15,000 USD exceeds the default threshold limit of $10,000.",
-            "Converted to local Singapore currency: SGD 20,250.00 (Exch Rate: 1.35)."
+            "AI Commission Outlier: Payout of ₹1,50,000 INR exceeds the default threshold limit of ₹1,00,000 INR."
           ],
           isValid: true
         },
         {
           id: "row-2",
-          data: { employeeId: "EMP-1042", employeeName: "Anna Weber", country: "Germany", awardAmount: 4000, quarter: "Q2 2026" },
+          data: { employeeId: "EMP-1042", employeeName: "Amit Gupta", country: "India", awardAmount: 40000, quarter: "Q2 2026" },
           errors: [],
-          warnings: ["Converted to local Euro currency: EUR 3,680.00 (Exch Rate: 0.92)."],
+          warnings: [],
           isValid: true
         },
         {
           id: "row-3",
-          data: { employeeId: "EMP-0098", employeeName: "Sarah Jenkins", country: "United States", awardAmount: 8500, quarter: "Q2 2026" },
+          data: { employeeId: "EMP-0098", employeeName: "Sneha Patel", country: "India", awardAmount: 85000, quarter: "Q2 2026" },
           errors: [],
           warnings: [],
           isValid: true
@@ -461,7 +459,7 @@ export default function DataIntegrationView({
     } 
     
     else if (scenario === "new_joiner_duplicates") {
-      setFileName("Onboarding_NewJoiner_Data.xlsx");
+      setFileName("Onboarding_NewJoiner_India_Data.xlsx");
       setUploadState("uploaded");
 
       const joinerTmpl = templates.find(t => t.id === "tmpl_new_joiner") || DEFAULT_TEMPLATES[2];
@@ -480,21 +478,21 @@ export default function DataIntegrationView({
       setParsedRows([
         {
           id: "row-1",
-          data: { employeeId: "EMP-1042", employeeName: "Anna Weber", country: "United States", joiningDate: "2026-07-15", grade: "Grade 9", baseSalary: 8500, email: "anna.weber@nexus-corp.com" },
-          errors: ["Personnel ID EMP-1042 is already registered. (Duplicate employee PS-Number found in active Germany database!)"],
-          warnings: ["Email formatting looks correct but employee ID exists in another sovereign region (Germany)."],
+          data: { employeeId: "EMP-1042", employeeName: "Amit Gupta", country: "India", joiningDate: "2026-07-15", grade: "Grade 9", baseSalary: 185000, email: "amit.gupta@nexus-corp.in" },
+          errors: ["Personnel ID EMP-1042 is already registered. (Duplicate employee PS-Number found in active India database!)"],
+          warnings: ["Email formatting looks correct but employee ID exists under an active contract."],
           isValid: false
         },
         {
           id: "row-2",
-          data: { employeeId: "EMP-4050", employeeName: "John Doe", country: "United States", joiningDate: "2026-07-20", grade: "Grade 7", baseSalary: 6200, email: "john.doe.nexus-corp.com" },
+          data: { employeeId: "EMP-4050", employeeName: "Sai Sharma", country: "India", joiningDate: "2026-07-20", grade: "Grade 7", baseSalary: 95000, email: "sai.sharma.nexus-corp.in" },
           errors: ["Corporate email must match standard domain formatting (Missing '@' or domain suffix)."],
           warnings: [],
           isValid: false
         },
         {
           id: "row-3",
-          data: { employeeId: "EMP-5011", employeeName: "Sarah Connor", country: "United States", joiningDate: "2026-07-16", grade: "Grade 8", baseSalary: 7200, email: "sconnor@nexus-corp.com" },
+          data: { employeeId: "EMP-5011", employeeName: "Priya Patel", country: "India", joiningDate: "2026-07-16", grade: "Grade 8", baseSalary: 110000, email: "priya.patel@nexus-corp.in" },
           errors: [],
           warnings: [],
           isValid: true
@@ -945,7 +943,7 @@ export default function DataIntegrationView({
   const handleAddCountryValidation = () => {
     setFormCountryVal(prev => [
       ...prev,
-      { country: "Germany", field: "overtimeHours", condition: "max_hours", value: "10", errorMessage: "Value exceeds statutory guidelines." }
+      { country: "India", field: "overtimeHours", condition: "max_hours", value: "50", errorMessage: "Value exceeds statutory guidelines." }
     ]);
   };
 
@@ -1101,7 +1099,7 @@ export default function DataIntegrationView({
                 onClick={() => handleSimulateUpload("overtime_outliers")}
                 id="btn_sim_overtime"
                 className={`p-2.5 rounded border text-left transition-all flex flex-col justify-between ${
-                  fileName === "Munich_Timecards_Germany_July.xlsx"
+                  fileName === "Mumbai_Timecards_India_July.xlsx"
                     ? "bg-[#0078D4]/10 border-[#0078D4] text-white"
                     : (isDark ? "bg-[#1F1F1F] border-[#2D2D2D] hover:border-slate-500 text-slate-300" : "bg-white border-[#EDEBE9] hover:bg-[#F3F2F1] text-slate-700")
                 }`}
@@ -1112,7 +1110,7 @@ export default function DataIntegrationView({
                     Overtime File
                   </div>
                   <p className="text-[9.5px] text-slate-400 mt-1 leading-normal">
-                    Has German max overtime outliers and missing mandatory field validation.
+                    Has Indian Factories Act overtime outliers and missing mandatory field validation.
                   </p>
                 </div>
                 <span className="text-[9px] text-[#0078D4] font-semibold mt-2.5 flex items-center gap-0.5 self-end">
@@ -1845,11 +1843,7 @@ export default function DataIntegrationView({
                               onChange={(e) => handleCountryValChange(idx, "country", e.target.value)}
                               className="text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
                             >
-                              <option value="Germany">Germany</option>
-                              <option value="Singapore">Singapore</option>
-                              <option value="United States">United States</option>
-                              <option value="Japan">Japan</option>
-                              <option value="France">France</option>
+                              <option value="India">India</option>
                               <option value="Global">Global/Shared</option>
                             </select>
 

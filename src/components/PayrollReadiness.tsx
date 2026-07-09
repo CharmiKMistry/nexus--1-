@@ -47,17 +47,17 @@ export default function PayrollReadiness({
     
     setTimeout(() => {
       setSimulatedProgress(20);
-      setSimulationStatus("Ingesting Munich Excel Overtime sheet...");
+      setSimulationStatus("Ingesting Mumbai Excel Overtime sheet...");
     }, 600);
 
     setTimeout(() => {
       setSimulatedProgress(45);
-      setSimulationStatus("Analyzing Germany working hours (Arbeitszeitgesetz) limits...");
+      setSimulationStatus("Analyzing India Factories Act working hours limits...");
     }, 1300);
 
     setTimeout(() => {
       setSimulatedProgress(65);
-      setSimulationStatus("Performing Singapore CPF age bracket retroactive check...");
+      setSimulationStatus("Performing India EPF basic threshold eligibility check...");
     }, 2000);
 
     setTimeout(() => {

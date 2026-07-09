@@ -33,10 +33,10 @@ export default function Copilot({ theme }: CopilotProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const suggestedPrompts = [
-    { label: "Summarize Germany alerts", query: "What compliance alerts are active for Germany?" },
-    { label: "Singapore CPF discrepancy", query: "Explain Singapore CPF discrepancy and the retro adjustment" },
+    { label: "Summarize India alerts", query: "What compliance alerts are active for India?" },
+    { label: "India EPF discrepancy", query: "Explain India EPF discrepancy and the retro adjustment" },
     { label: "Executive payroll readiness", query: "Generate an executive summary of this month's payroll readiness" },
-    { label: "Germany working hour rules", query: "Show me the working hours rule policy for Germany" }
+    { label: "India working hour rules", query: "Show me the working hours rule policy for India" }
   ];
 
   useEffect(() => {

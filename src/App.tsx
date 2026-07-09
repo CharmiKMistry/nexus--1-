@@ -34,6 +34,7 @@ import ComplianceAudit from "./components/ComplianceAudit";
 import ReportsView from "./components/ReportsView";
 import IntegrationHub from "./components/IntegrationHub";
 import AiPayrollAssistant from "./components/AiPayrollAssistant";
+import TimesheetPortal from "./components/TimesheetPortal";
 
 import { NexusDB } from "./lib/db";
 
@@ -584,6 +585,8 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             theme={theme}
           />
         );
+      case "client_timesheets":
+        return <TimesheetPortal theme={theme} />;
       case "events":
         return <PayrollEventCenter theme={theme} />;
       case "upload":

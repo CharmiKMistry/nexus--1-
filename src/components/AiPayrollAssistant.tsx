@@ -29,8 +29,8 @@ export default function AiPayrollAssistant({ theme }: AiPayrollAssistantProps) {
 I am your intelligent orchestration assistant. I can help you validate payroll inputs, audit compliance policies, explain statutory tax rules, and resolve data anomalies.
 
 **Here are some things you can ask me:**
-* "What compliance alerts are active for Germany?"
-* "Explain Singapore CPF discrepancy and the retro adjustment"
+* "What compliance alerts are active for India?"
+* "Explain India EPF discrepancy and the retro adjustment"
 * "Generate an executive summary of this month's payroll readiness"`
     }
   ]);
@@ -78,8 +78,8 @@ I am your intelligent orchestration assistant. I can help you validate payroll i
         role: "assistant", 
         content: `### ⚠️ Connection Offline
 Unable to reach the server. Here is a simulated response based on the active country rules:
-* Germany working hours: Germany strictly enforces an 8-hour daily limit. The system has flagged **2 anomalies** in Munich operation.
-* Singapore CPF mismatch: Marcus Tan was calculated at 15% instead of 20% due to a shift in his age bracket.`
+* India working hours: India strictly enforces Factories Act limits. The system has flagged **1 anomaly** in Mumbai operation.
+* India EPF mismatch: Sai Gupta was calculated at mismatch due to basic salary threshold limit of ₹15,000.`
       }]);
     } finally {
       setIsLoading(false);
@@ -87,10 +87,10 @@ Unable to reach the server. Here is a simulated response based on the active cou
   };
 
   const samplePrompts = [
-    "What compliance alerts are active for Germany?",
-    "Explain Singapore CPF discrepancy and the retro adjustment",
+    "What compliance alerts are active for India?",
+    "Explain India EPF discrepancy and the retro adjustment",
     "Generate an executive summary of this month's payroll readiness",
-    "Show me the working hours rule policy for France"
+    "Show me the working hours rule policy for India"
   ];
 
   return (
@@ -248,11 +248,11 @@ Unable to reach the server. Here is a simulated response based on the active cou
               <span className="text-[9.5px] font-bold uppercase text-slate-400 block">RAG Document Matches</span>
               <div className="flex items-center gap-1 text-[10.5px] font-semibold text-[#0078D4]">
                 <BookOpen size={11} />
-                <span>Germany Working Time Act</span>
+                <span>India Factories Act 1948</span>
               </div>
               <div className="flex items-center gap-1 text-[10.5px] font-semibold text-[#0078D4]">
                 <BookOpen size={11} />
-                <span>Singapore CPF Compliance</span>
+                <span>EPF and MP Act 1952</span>
               </div>
             </div>
           </div>

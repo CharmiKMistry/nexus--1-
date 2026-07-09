@@ -50,12 +50,12 @@ export default function AnalyticsView({ theme }: AnalyticsViewProps) {
   ];
 
   const countryVolumeComparison = [
-    { name: "Germany", value: 380000 },
-    { name: "US", value: 450000 },
-    { name: "Singapore", value: 290000 },
-    { name: "Japan", value: 190000 },
-    { name: "France", value: 110000 },
-    { name: "India", value: 340000 }
+    { name: "Mumbai Hub", value: 380000 },
+    { name: "Bengaluru Hub", value: 450000 },
+    { name: "Pune Hub", value: 290000 },
+    { name: "Delhi NCR Hub", value: 190000 },
+    { name: "Noida Hub", value: 110000 },
+    { name: "Hyderabad Hub", value: 340000 }
   ];
 
   const triggerExport = (format: "csv" | "xlsx" | "pdf") => {
@@ -65,11 +65,11 @@ export default function AnalyticsView({ theme }: AnalyticsViewProps) {
     let extension = "";
 
     if (selectedReport === "Payroll Ready Feed") {
-      content = "EmployeeId,EmployeeName,Country,Department,BaseSalary,OvertimePay,CPFContribution,TotalPay\n" +
-                "EMP-1042,Anna Weber,Germany,Engineering,8500,350,0,8850\n" +
-                "EMP-2109,Marcus Tan,Singapore,Product,7800,0,1560,9360\n" +
-                "EMP-0098,Sarah Jenkins,United States,Sales,12500,0,0,12500\n" +
-                "EMP-8044,Amit Patel,India,Engineering,120000,0,0,120000\n";
+      content = "EmployeeId,EmployeeName,Country,Department,BaseSalary,OvertimePay,EPFContribution,TotalPay\n" +
+                "EMP-1042,Amit Gupta,India,Engineering,185000,5400,22200,168200\n" +
+                "EMP-2109,Sai Gupta,India,Product,158000,0,18960,139040\n" +
+                "EMP-0098,Sneha Patel,India,Sales,225000,0,27000,198000\n" +
+                "EMP-8044,Amit Patel,India,Support,85000,0,10200,74800\n";
       mimeType = "text/csv";
       extension = "csv";
     } else {
@@ -77,7 +77,7 @@ export default function AnalyticsView({ theme }: AnalyticsViewProps) {
                 "Timestamp: 2026-07-06T10:26Z\n" +
                 "Cycle: July 2026\n" +
                 "Auditor Profile: Ronak Surve\n" +
-                "Bypass Logs: Approved Germany Daily Overtime Bypass for Anna Weber (EMP-1042)\n";
+                "Bypass Logs: Approved India Daily Overtime Bypass for Amit Gupta (EMP-1042)\n";
       mimeType = "text/plain";
       extension = "txt";
     }

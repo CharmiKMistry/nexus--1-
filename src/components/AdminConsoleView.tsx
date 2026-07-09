@@ -77,7 +77,7 @@ export default function AdminConsoleView({
   const [formEmail, setFormEmail] = useState("");
   const [formPsNumber, setFormPsNumber] = useState("");
   const [formDepartment, setFormDepartment] = useState("");
-  const [formCountry, setFormCountry] = useState("Singapore");
+  const [formCountry, setFormCountry] = useState("India");
   const [formRoles, setFormRoles] = useState<string[]>([]);
   const [formMfa, setFormMfa] = useState(true);
   const [formStatus, setFormStatus] = useState("Active");
@@ -706,12 +706,7 @@ export default function AdminConsoleView({
             <FormControl fullWidth size="small">
               <InputLabel>Country Jurisdiction</InputLabel>
               <Select value={formCountry} label="Country Jurisdiction" onChange={(e) => setFormCountry(e.target.value as string)}>
-                <MenuItem value="Singapore">Singapore</MenuItem>
-                <MenuItem value="Germany">Germany</MenuItem>
-                <MenuItem value="France">France</MenuItem>
-                <MenuItem value="United States">United States</MenuItem>
                 <MenuItem value="India">India</MenuItem>
-                <MenuItem value="United Kingdom">United Kingdom</MenuItem>
               </Select>
             </FormControl>
 

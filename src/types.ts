@@ -65,6 +65,7 @@ export interface ValidationResult {
   explanation: string;
   recommendedResolution: string;
   status: "Pending" | "Resolved" | "Ignored";
+  period?: string; // e.g. "July 2026"
 }
 
 export interface ReconciliationResult {
@@ -78,6 +79,7 @@ export interface ReconciliationResult {
   confidence: number;
   aiRecommendation: string;
   status: "Pending" | "Approved" | "Ignored";
+  period?: string; // e.g. "July 2026"
 }
 
 export interface AuditLog {

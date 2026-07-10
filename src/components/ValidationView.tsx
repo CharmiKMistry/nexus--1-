@@ -18,14 +18,22 @@ interface ValidationViewProps {
   validations: ValidationResult[];
   onResolve: (id: string, action: "Resolved" | "Ignored") => void;
   theme: "dark" | "light";
+  activePeriod: string;
 }
 
 export default function ValidationView({
-  validations,
+  validations: validationsProp,
   onResolve,
-  theme
+  theme,
+  activePeriod
 }: ValidationViewProps) {
   const [selectedIssue, setSelectedIssue] = useState<ValidationResult | null>(null);
+
+  // Filter validations by active period
+  const validations = validationsProp.filter(v => {
+    if (v.period) return v.period === activePeriod;
+    return activePeriod === "July 2026";
+  });
 
   const getSeverityBadge = (sev: "High" | "Medium" | "Low") => {
     switch (sev) {

@@ -16,14 +16,22 @@ interface ReconciliationViewProps {
   reconciliations: ReconciliationResult[];
   onReconcile: (id: string, status: "Approved" | "Ignored") => void;
   theme: "dark" | "light";
+  activePeriod: string;
 }
 
 export default function ReconciliationView({
-  reconciliations,
+  reconciliations: reconciliationsProp,
   onReconcile,
-  theme
+  theme,
+  activePeriod
 }: ReconciliationViewProps) {
   const [selectedItem, setSelectedItem] = useState<ReconciliationResult | null>(null);
+
+  // Filter reconciliations by active period
+  const reconciliations = reconciliationsProp.filter(r => {
+    if (r.period) return r.period === activePeriod;
+    return activePeriod === "July 2026";
+  });
 
   const isDark = theme === "dark";
 

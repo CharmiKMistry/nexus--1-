@@ -11,7 +11,6 @@ import {
   AlertCircle,
   Clock,
   CheckCircle,
-  HelpCircle,
   X,
   Edit2,
   Trash2,
@@ -20,10 +19,16 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   History,
-  ShieldCheck,
   ChevronRight,
   RefreshCw,
-  Coins
+  Coins,
+  ShieldAlert,
+  Eye,
+  Sliders,
+  Download,
+  ToggleLeft,
+  ToggleRight,
+  Copy
 } from "lucide-react";
 import { 
   addDoc, 
@@ -36,7 +41,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
-// --- Types ---
+// --- Types & Interfaces ---
 export interface TemplateField {
   key: string;
   label: string;
@@ -47,21 +52,29 @@ export interface TemplateField {
 export interface CountryValidation {
   country: string;
   field: string;
-  condition: "max_hours" | "min_amount" | "max_amount" | "format_email" | "not_duplicate_ps";
+  condition: "max_hours" | "min_amount" | "max_amount" | "format_email";
   value: string;
   errorMessage: string;
 }
 
 export interface PayrollTemplate {
   id: string;
+  templateId: string;
   name: string;
+  templateName: string;
   description: string;
+  version: number;
+  headers: string[];
+  mandatoryFields: string[];
+  createdAt: string;
+  updatedAt: string;
+  status: "Active" | "Inactive";
+  createdBy: string;
   requiredFields: TemplateField[];
   countryValidations: CountryValidation[];
-  currency: string;
   aiRules: string[];
   approvalWorkflow: string[];
-  version: number;
+  currency: string;
   isSystem?: boolean;
 }
 
@@ -93,25 +106,30 @@ export default function DataIntegrationView({
 }) {
   const isDark = theme === "dark";
 
-  // --- State Variables ---
+  // --- Core States ---
   const [activeTab, setActiveTab] = useState<"upload" | "templates" | "history">("upload");
   const [templates, setTemplates] = useState<PayrollTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [employeesList, setEmployeesList] = useState<any[]>([]);
 
-  // Upload view state
+  // Ingestion history states
+  const [historyItems, setHistoryItems] = useState<IngestionHistoryItem[]>([]);
+
+  // Upload state management
   const [dragActive, setDragActive] = useState(false);
   const [uploadState, setUploadState] = useState<"idle" | "uploaded" | "mapping" | "review" | "success">("idle");
   const [fileName, setFileName] = useState("");
   const [detectedTemplate, setDetectedTemplate] = useState<PayrollTemplate | null>(null);
-  
-  // Custom column mapping suggestion state (if Excel headers slightly differ)
   const [columnMappings, setColumnMappings] = useState<{ sourceHeader: string; targetField: string; confidence: number }[]>([]);
-  
-  // Interactive parsed spreadsheet rows state for review/corrections
   const [parsedRows, setParsedRows] = useState<SpreadsheetRow[]>([]);
   const [editingRow, setEditingRow] = useState<SpreadsheetRow | null>(null);
+  const [uploadedRawRows, setUploadedRawRows] = useState<any[][]>([]);
 
-  // New Template Form builder state (Dynamic Template Management)
+  // Template Adaptive Learning Wizard
+  const [learningSheet, setLearningSheet] = useState<{ fileName: string; columns: string[] } | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  // Template Form builder states
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PayrollTemplate | null>(null);
   const [formTemplateName, setFormTemplateName] = useState("");
@@ -122,395 +140,491 @@ export default function DataIntegrationView({
   const [formWorkflow, setFormWorkflow] = useState<string[]>([]);
   const [formAiRules, setFormAiRules] = useState<string[]>([]);
 
-  // AI Template Learning State (The unrequested Excel allowance feature!)
-  const [learningSheet, setLearningSheet] = useState<{ fileName: string; columns: string[] } | null>(null);
+  // Custom dialogs for confirm / alert (to avoid iframe sandbox allowance issues)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
-  // Ingestion history items
-  const [historyItems, setHistoryItems] = useState<IngestionHistoryItem[]>([
-    { id: "h-1", fileName: "Mumbai_Overtime_June2026.csv", templateName: "Overtime", recordsCount: 12, time: "2026-07-06 03:15", status: "Completed", mappingScore: 100, user: "Ronak Surve" },
-    { id: "h-2", fileName: "IN_Product_Bonuses.xlsx", templateName: "Variable Pay", recordsCount: 8, time: "2026-07-05 14:22", status: "Completed", mappingScore: 98, user: "Ronak Surve" },
-    { id: "h-3", fileName: "IN_SalesAwards_Q2.xlsx", templateName: "Sales Award", recordsCount: 15, time: "2026-07-04 09:40", status: "Completed", mappingScore: 100, user: "Sai Gupta" }
-  ]);
+  const [alertDialog, setAlertDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm });
+  };
+
+  const showAlert = (title: string, message: string, type: "success" | "error" | "info" = "info") => {
+    setAlertDialog({ isOpen: true, title, message, type });
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Predefined default templates ---
-  const DEFAULT_TEMPLATES: PayrollTemplate[] = [
-    {
-      id: "tmpl_overtime",
-      name: "Overtime",
-      description: "Hourly overtime payments matching attendance logs",
-      version: 1,
-      isSystem: true,
-      currency: "INR",
-      requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
-        { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "overtimeHours", label: "OT Hours Worked", type: "number", isMandatory: true },
-        { key: "hourlyRate", label: "Hourly Rate", type: "number", isMandatory: true },
-        { key: "otDate", label: "OT Date", type: "date", isMandatory: true }
-      ],
-      countryValidations: [
-        { country: "India", field: "overtimeHours", condition: "max_hours", value: "50", errorMessage: "India Factories Act limits quarterly overtime to 50 hours." }
-      ],
-      aiRules: [
-        "Flag overtime records with total hours worked in a week > 48 as outliers under the Factories Act.",
-        "Ensure OT hours do not exceed company standard daily quotas and match average card swipes."
-      ],
-      approvalWorkflow: ["Operations Lead", "HR Controller", "Payroll Manager"]
-    },
-    {
-      id: "tmpl_sales_award",
-      name: "Sales Award",
-      description: "Sales and Performance Commission Payouts",
-      version: 1,
-      isSystem: true,
-      currency: "INR",
-      requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
-        { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "awardAmount", label: "Commission (INR)", type: "number", isMandatory: true },
-        { key: "quarter", label: "Fiscal Quarter", type: "string", isMandatory: true }
-      ],
-      countryValidations: [
-        { country: "India", field: "awardAmount", condition: "max_amount", value: "100000", errorMessage: "Sales Awards above ₹1,00,000 INR require special Executive Board sign-off." }
-      ],
-      aiRules: [
-        "Convert or check award amount against budget limits.",
-        "Cross reference with CRM Salesforce closed-won quotas to flag unauthorized payouts."
-      ],
-      approvalWorkflow: ["Sales VP", "Finance Director"]
-    },
-    {
-      id: "tmpl_new_joiner",
-      name: "New Joiner",
-      description: "Employee onboarding salary inputs and registration parameters",
-      version: 1,
-      isSystem: true,
-      currency: "INR",
-      requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
-        { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "joiningDate", label: "Date of Joining", type: "date", isMandatory: true },
-        { key: "grade", label: "Corporate Grade", type: "string", isMandatory: true },
-        { key: "baseSalary", label: "Base Salary Component", type: "number", isMandatory: true },
-        { key: "email", label: "Corporate Email Address", type: "string", isMandatory: true }
-      ],
-      countryValidations: [
-        { country: "India", field: "email", condition: "format_email", value: "domain", errorMessage: "Corporate email must match standard domain formatting." },
-        { country: "India", field: "employeeId", condition: "not_duplicate_ps", value: "unique", errorMessage: "This Personnel ID is already registered under an active corporate contract." }
-      ],
-      aiRules: [
-        "Detect if employee onboarding data contains matching duplicate PS numbers.",
-        "Validate salary bands are fully aligned with the designated grade scale constraints."
-      ],
-      approvalWorkflow: ["Talent Acquisition", "Compensation Partner", "HR Ops VP"]
-    },
+  // --- 9 Official Corporate Default Templates ---
+  const OFFICIAL_DEFAULT_TEMPLATES: PayrollTemplate[] = [
     {
       id: "tmpl_retention_pay",
+      templateId: "tmpl_retention_pay",
       name: "Retention Pay",
-      description: "One-off retention bonus payouts tied to multi-year loyalty clauses",
+      templateName: "Retention Pay",
+      description: "Retention pay inputs and lock-in bonus records with conditional validation.",
       version: 1,
-      isSystem: true,
-      currency: "USD",
+      headers: ["PS Number", "Name of Employee", "Pay Component (Retention)", "Amount in Local Currency"],
+      mandatoryFields: ["PS Number", "Name of Employee", "Amount in Local Currency"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
+      currency: "Global",
       requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
-        { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "retentionAmount", label: "Retention Bonus Amount", type: "number", isMandatory: true },
-        { key: "retentionPeriodMonths", label: "Lock-in Period (Months)", type: "number", isMandatory: true }
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name of Employee", type: "string", isMandatory: true },
+        { key: "payComponent", label: "Pay Component (Retention)", type: "string", isMandatory: false },
+        { key: "amount", label: "Amount in Local Currency", type: "number", isMandatory: true }
       ],
       countryValidations: [],
-      aiRules: ["Ensure retention payment amount does not exceed 40% of standard annual base compensation."],
-      approvalWorkflow: ["HR Director", "VP Finance"]
+      aiRules: ["Validate lock-in bonus does not exceed regional budget limits."],
+      approvalWorkflow: ["HR Specialist", "Regional Lead"],
+      isSystem: true
     },
     {
       id: "tmpl_variable_pay",
+      templateId: "tmpl_variable_pay",
       name: "Variable Pay",
-      description: "Discretionary and non-discretionary corporate bonus inputs",
+      templateName: "Variable Pay",
+      description: "Variable pay adjustments, performance awards, and discretionary allowances.",
       version: 1,
-      isSystem: true,
+      headers: ["PS Number", "Name of Employee", "Pay Component (Variable Pay)", "Amount in Local Currency"],
+      mandatoryFields: ["PS Number", "Name of Employee", "Amount in Local Currency"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
       currency: "Global",
       requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
-        { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "bonusAmount", label: "Bonus Amount", type: "number", isMandatory: true },
-        { key: "performanceRating", label: "Rating (1-5)", type: "number", isMandatory: true }
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name of Employee", type: "string", isMandatory: true },
+        { key: "payComponent", label: "Pay Component (Variable Pay)", type: "string", isMandatory: false },
+        { key: "amount", label: "Amount in Local Currency", type: "number", isMandatory: true }
       ],
       countryValidations: [],
-      aiRules: ["Flag bonuses as outliers where performance rating is < 3 but bonus is top-tier."],
-      approvalWorkflow: ["Line Manager", "HR Generalist", "Country Admin"]
+      aiRules: ["Ensure rating metrics align with variable payout tiers."],
+      approvalWorkflow: ["Line Manager", "Regional Finance"],
+      isSystem: true
     },
     {
       id: "tmpl_resignation",
+      templateId: "tmpl_resignation",
       name: "Resignation",
-      description: "Terminal payouts, notice periods, and leave encashment calculations",
+      templateName: "Resignation",
+      description: "Terminal payouts, separation date logs, and notice period buyouts.",
       version: 1,
-      isSystem: true,
+      headers: ["PS Number", "Name", "Separation Date", "Leave to be Encashed", "Reason of Separation"],
+      mandatoryFields: ["PS Number", "Name", "Separation Date", "Leave to be Encashed"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
       currency: "Global",
       requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
-        { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "resignationDate", label: "Resignation Submission Date", type: "date", isMandatory: true },
-        { key: "lastWorkingDate", label: "Last Working Date", type: "date", isMandatory: true },
-        { key: "leaveEncashmentDays", label: "Encashment Days", type: "number", isMandatory: true }
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
+        { key: "separationDate", label: "Separation Date", type: "date", isMandatory: true },
+        { key: "leaveEncashment", label: "Leave to be Encashed", type: "number", isMandatory: true },
+        { key: "reason", label: "Reason of Separation", type: "string", isMandatory: false }
       ],
       countryValidations: [],
-      aiRules: ["Verify that notice period days match statutory region requirements (e.g. 30 days in Europe)."],
-      approvalWorkflow: ["Reporting Manager", "HRBP", "Payroll Specialist"]
+      aiRules: ["Audit final working day against statutory notice periods."],
+      approvalWorkflow: ["HR Partner", "Payroll Lead"],
+      isSystem: true
+    },
+    {
+      id: "tmpl_sales_award",
+      templateId: "tmpl_sales_award",
+      name: "Sales Award",
+      templateName: "Sales Award",
+      description: "Commission payments with multi-currency conversion to local employee currencies.",
+      version: 1,
+      headers: ["PS Number", "Name", "Category", "Region", "Client Account", "Amount (USD)"],
+      mandatoryFields: ["PS Number", "Name", "Region", "Amount (USD)"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
+      currency: "USD",
+      requiredFields: [
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
+        { key: "category", label: "Category", type: "string", isMandatory: false },
+        { key: "country", label: "Region", type: "string", isMandatory: true },
+        { key: "clientAccount", label: "Client Account", type: "string", isMandatory: false },
+        { key: "amountUsd", label: "Amount (USD)", type: "number", isMandatory: true }
+      ],
+      countryValidations: [
+        { country: "India", field: "amountUsd", condition: "max_amount", value: "2000", errorMessage: "Awards above $2,000 USD require compensation board approval." }
+      ],
+      aiRules: ["Convert commission value from USD to employee local currency.", "Flag sales commissions exceeding corporate budgets."],
+      approvalWorkflow: ["Sales Director", "Global Compensation"],
+      isSystem: true
     },
     {
       id: "tmpl_recovery_input",
+      templateId: "tmpl_recovery_input",
       name: "Recovery Input",
-      description: "Amortized clawbacks and payroll overpayment recovery adjustments",
+      templateName: "Recovery Input",
+      description: "Clawbacks, overpayments, and advances deductions processing.",
       version: 1,
-      isSystem: true,
+      headers: ["PS Number", "Name", "Country", "Type of Recovery", "Amount to be Recovered"],
+      mandatoryFields: ["PS Number", "Name", "Country", "Amount to be Recovered"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
       currency: "Global",
       requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
         { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "recoveryAmount", label: "Recovery Amount", type: "number", isMandatory: true },
-        { key: "reason", label: "Clawback Reason", type: "string", isMandatory: true }
+        { key: "recoveryType", label: "Type of Recovery", type: "string", isMandatory: false },
+        { key: "amount", label: "Amount to be Recovered", type: "number", isMandatory: true }
       ],
       countryValidations: [],
-      aiRules: ["Verify recovery installment does not exceed 25% of standard gross monthly take-home salary."],
-      approvalWorkflow: ["HR Compliance Officer", "Finance Auditor"]
+      aiRules: ["Deduction installments must not exceed 25% of gross pay."],
+      approvalWorkflow: ["Operations Supervisor", "Finance Controller"],
+      isSystem: true
     },
     {
       id: "tmpl_salary_change",
+      templateId: "tmpl_salary_change",
       name: "Salary Change",
-      description: "Contractual CTC base adjustments and allowance updates",
+      templateName: "Salary Change",
+      description: "CTC Base adjustments, allowance re-allocations, and compensation amendments.",
       version: 1,
-      isSystem: true,
+      headers: ["PS Number", "Name", "Country", "Currency Type", "Base Compensation", "Project Allowance", "Transportation Allowance", "HRA", "Other Allowance", "Variable Pay", "Telephone and Conveyance Allowance", "Air Passage", "Annual Retention Bonus", "Quarterly Retention Bonus", "Total CTC", "Comments"],
+      mandatoryFields: ["PS Number", "Name", "Country", "Currency Type", "Base Compensation", "Total CTC"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
       currency: "Global",
       requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
         { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "oldSalary", label: "Previous Base Salary", type: "number", isMandatory: true },
-        { key: "newSalary", label: "Amended Base Salary", type: "number", isMandatory: true },
-        { key: "effectiveDate", label: "Effective Contract Date", type: "date", isMandatory: true }
+        { key: "currency", label: "Currency Type", type: "string", isMandatory: true },
+        { key: "baseCompensation", label: "Base Compensation", type: "number", isMandatory: true },
+        { key: "projectAllowance", label: "Project Allowance", type: "number", isMandatory: false },
+        { key: "transportationAllowance", label: "Transportation Allowance", type: "number", isMandatory: false },
+        { key: "hra", label: "HRA", type: "number", isMandatory: false },
+        { key: "otherAllowance", label: "Other Allowance", type: "number", isMandatory: false },
+        { key: "variablePay", label: "Variable Pay", type: "number", isMandatory: false },
+        { key: "telecomAllowance", label: "Telephone and Conveyance Allowance", type: "number", isMandatory: false },
+        { key: "airPassage", label: "Air Passage", type: "number", isMandatory: false },
+        { key: "annualRetention", label: "Annual Retention Bonus", type: "number", isMandatory: false },
+        { key: "quarterlyRetention", label: "Quarterly Retention Bonus", type: "number", isMandatory: false },
+        { key: "totalCtc", label: "Total CTC", type: "number", isMandatory: true },
+        { key: "comments", label: "Comments", type: "string", isMandatory: false }
       ],
       countryValidations: [],
-      aiRules: ["Ensure base salary percentage increment aligns with formal corporate merit bands."],
-      approvalWorkflow: ["Compensation Lead", "Regional HR Director", "Finance Controller"]
+      aiRules: ["Flag increments exceeding 35% as critical audit outliers."],
+      approvalWorkflow: ["Compensation Lead", "Regional Director", "Finance VP"],
+      isSystem: true
+    },
+    {
+      id: "tmpl_overtime",
+      templateId: "tmpl_overtime",
+      name: "Overtime",
+      templateName: "Overtime",
+      description: "Hourly overtime logging matched against clock swipe systems.",
+      version: 1,
+      headers: ["PS Number", "Name", "Day", "Date", "Total Hours", "Regular Working Hours", "OT Hours"],
+      mandatoryFields: ["PS Number", "Name", "Date", "Total Hours", "OT Hours"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
+      currency: "Global",
+      requiredFields: [
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
+        { key: "day", label: "Day", type: "string", isMandatory: false },
+        { key: "date", label: "Date", type: "date", isMandatory: true },
+        { key: "totalHours", label: "Total Hours", type: "number", isMandatory: true },
+        { key: "regularHours", label: "Regular Working Hours", type: "number", isMandatory: false },
+        { key: "otHours", label: "OT Hours", type: "number", isMandatory: true }
+      ],
+      countryValidations: [
+        { country: "India", field: "otHours", condition: "max_hours", value: "50", errorMessage: "India Factories Act limits quarterly overtime to 50 hours max." }
+      ],
+      aiRules: ["Flag work hours exceeding regional labor law regulations."],
+      approvalWorkflow: ["Operations Lead", "Regional Auditor"],
+      isSystem: true
+    },
+    {
+      id: "tmpl_new_joiner",
+      templateId: "tmpl_new_joiner",
+      name: "New Joiner",
+      templateName: "New Joiner",
+      description: "Onboarding details and starter compensation components mapping.",
+      version: 1,
+      headers: ["PS Number", "Name", "Joining Grade", "Start Date", "Email ID", "Deputation or Direct Hire", "Basic Pay", "HRA", "Other Allowance", "Total Salary", "Remarks"],
+      mandatoryFields: ["PS Number", "Name", "Start Date", "Email ID", "Total Salary"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
+      currency: "Global",
+      requiredFields: [
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
+        { key: "joiningGrade", label: "Joining Grade", type: "string", isMandatory: false },
+        { key: "startDate", label: "Start Date", type: "date", isMandatory: true },
+        { key: "email", label: "Email ID", type: "string", isMandatory: true },
+        { key: "hireType", label: "Deputation or Direct Hire", type: "string", isMandatory: false },
+        { key: "basicPay", label: "Basic Pay", type: "number", isMandatory: false },
+        { key: "hra", label: "HRA", type: "number", isMandatory: false },
+        { key: "otherAllowance", label: "Other Allowance", type: "number", isMandatory: false },
+        { key: "totalSalary", label: "Total Salary", type: "number", isMandatory: true },
+        { key: "remarks", label: "Remarks", type: "string", isMandatory: false }
+      ],
+      countryValidations: [
+        { country: "Global", field: "email", condition: "format_email", value: "format", errorMessage: "Employee corporate email must match typical formatting (contain @)." }
+      ],
+      aiRules: ["Validate salary bands strictly align with joining grade standards."],
+      approvalWorkflow: ["TA Specialist", "Compensation Lead", "HR Admin VP"],
+      isSystem: true
     },
     {
       id: "tmpl_promotion",
+      templateId: "tmpl_promotion",
       name: "Promotion / Grade Change",
-      description: "Employee grade upgrade and associated payroll adjustment",
+      templateName: "Promotion / Grade Change",
+      description: "Grade changes, structural transfers, and associated designation amendments.",
       version: 1,
-      isSystem: true,
+      headers: ["PS Number", "Name", "Country", "Current Grade", "Current Designation", "Final New Grade", "Final New Designation", "Event", "Event Reason", "Effective Date"],
+      mandatoryFields: ["PS Number", "Name", "Country", "Current Grade", "Final New Grade", "Effective Date"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System",
       currency: "Global",
       requiredFields: [
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name", type: "string", isMandatory: true },
         { key: "country", label: "Country", type: "string", isMandatory: true },
-        { key: "oldGrade", label: "Previous Corporate Grade", type: "string", isMandatory: true },
-        { key: "newGrade", label: "Amended Corporate Grade", type: "string", isMandatory: true },
-        { key: "newDesignation", label: "New Job Designation", type: "string", isMandatory: true }
+        { key: "currentGrade", label: "Current Grade", type: "string", isMandatory: true },
+        { key: "currentDesignation", label: "Current Designation", type: "string", isMandatory: false },
+        { key: "newGrade", label: "Final New Grade", type: "string", isMandatory: true },
+        { key: "newDesignation", label: "Final New Designation", type: "string", isMandatory: false },
+        { key: "event", label: "Event", type: "string", isMandatory: false },
+        { key: "eventReason", label: "Event Reason", type: "string", isMandatory: false },
+        { key: "effectiveDate", label: "Effective Date", type: "date", isMandatory: true }
       ],
       countryValidations: [],
-      aiRules: ["Ensure that new corporate grade matches grade hierarchy and is higher than previous grade."],
-      approvalWorkflow: ["Department VP", "HR Business Partner", "Finance Compensation Partner"]
+      aiRules: ["Confirm career grade progressions align with the organization structure matrix."],
+      approvalWorkflow: ["HR Business Partner", "Compensation Specialist", "Operations VP"],
+      isSystem: true
     }
   ];
 
-  // --- Load Templates on Mount ---
+  // --- Initialize & Synchronize on Mount ---
   useEffect(() => {
-    async function loadTemplatesAndSeeding() {
+    async function bootAndSeed() {
       setIsLoadingTemplates(true);
       try {
-        const tSnap = await getDocs(collection(db, "PayrollTemplates"));
+        // 1. Fetch Master Templates from persistent Firebase 'template_registry'
+        const tSnap = await getDocs(collection(db, "template_registry"));
         if (tSnap.empty) {
-          // Seed initial templates to Firestore to enable true dynamic management!
-          console.log("Seeding initial dynamic payroll templates into Firestore...");
-          for (const tmpl of DEFAULT_TEMPLATES) {
-            await setDoc(doc(db, "PayrollTemplates", tmpl.id), tmpl);
+          console.log("No templates found in 'template_registry'. Seeding 9 default templates...");
+          for (const tmpl of OFFICIAL_DEFAULT_TEMPLATES) {
+            await setDoc(doc(db, "template_registry", tmpl.id), tmpl);
           }
-          setTemplates(DEFAULT_TEMPLATES);
+          setTemplates(OFFICIAL_DEFAULT_TEMPLATES);
         } else {
           const list = tSnap.docs.map(doc => doc.data() as PayrollTemplate);
           setTemplates(list);
         }
+
+        // 2. Load Ingestion History Logs
+        await loadHistory();
+
+        // 3. Fetch Master Employees list from system endpoint for live cross-validation
+        const empRes = await fetch("/api/employees");
+        if (empRes.ok) {
+          const empData = await empRes.json();
+          setEmployeesList(empData);
+        }
       } catch (err) {
-        console.error("Failed loading templates from Firestore, using local defaults:", err);
-        setTemplates(DEFAULT_TEMPLATES);
+        console.error("Failed initialization sequence:", err);
+        setTemplates(OFFICIAL_DEFAULT_TEMPLATES);
       } finally {
         setIsLoadingTemplates(false);
       }
     }
-    loadTemplatesAndSeeding();
+    bootAndSeed();
   }, []);
 
-  // --- Pre-baked Simulation File Payloads ---
-  const handleSimulateUpload = (scenario: string) => {
-    setUploadState("idle");
-    setLearningSheet(null);
-    setDetectedTemplate(null);
-    setParsedRows([]);
-    setColumnMappings([]);
-
-    if (scenario === "overtime_outliers") {
-      setFileName("Mumbai_Timecards_India_July.xlsx");
-      setUploadState("uploaded");
-      
-      const overtimeTmpl = templates.find(t => t.id === "tmpl_overtime") || DEFAULT_TEMPLATES[0];
-      setDetectedTemplate(overtimeTmpl);
-
-      // Create slightly altered headers to demonstrate column mapping
-      setColumnMappings([
-        { sourceHeader: "Staff_Id", targetField: "employeeId", confidence: 100 },
-        { sourceHeader: "Employee_Name", targetField: "employeeName", confidence: 99 },
-        { sourceHeader: "Target_Region", targetField: "country", confidence: 95 },
-        { sourceHeader: "OT_Approved_Hours", targetField: "overtimeHours", confidence: 91 },
-        { sourceHeader: "Hourly_Base_INR", targetField: "hourlyRate", confidence: 96 },
-        { sourceHeader: "Log_Date", targetField: "otDate", confidence: 94 }
-      ]);
-
-      // Row by row mock parsed records
-      setParsedRows([
-        {
-          id: "row-1",
-          data: { employeeId: "EMP-1042", employeeName: "Amit Gupta", country: "India", overtimeHours: 12, hourlyRate: 450, otDate: "2026-07-02" },
-          errors: ["Worked 12.0 hours in a single shift, exceeding the 9-hour daily threshold mandated by the India Factories Act."],
-          warnings: ["Overtime hours are 40% higher than employee's normal daily median schedule."],
-          isValid: false
-        },
-        {
-          id: "row-2",
-          // Demonstrating high hours outlier
-          data: { employeeId: "EMP-2109", employeeName: "Sai Gupta", country: "India", overtimeHours: 54, hourlyRate: 400, otDate: "2026-07-03" },
-          errors: ["Total quarterly overtime hours exceed the 50-hour limit under the Factories Act."],
-          warnings: ["AI Outlier Detection: Unusually high overtime hours (54 hours) flagged. Align with attendance logs recommended."],
-          isValid: false
-        },
-        {
-          id: "row-3",
-          data: { employeeId: "EMP-3045", employeeName: "Rohan Sharma", country: "India", overtimeHours: 5, hourlyRate: 350, otDate: "2026-07-01" },
-          errors: [],
-          warnings: [],
-          isValid: true
-        },
-        {
-          id: "row-4",
-          // Invalid employee name (Missing mandatory) & Missing ID format
-          data: { employeeId: "", employeeName: "", country: "India", overtimeHours: 8, hourlyRate: 450, otDate: "2026-07-04" },
-          errors: ["Personnel ID is a mandatory field.", "Full Name is a mandatory field."],
-          warnings: [],
-          isValid: false
-        },
-        {
-          id: "row-5",
-          data: { employeeId: "EMP-1204", employeeName: "Ananya Joshi", country: "India", overtimeHours: 6, hourlyRate: 380, otDate: "2026-07-05" },
-          errors: [],
-          warnings: [],
-          isValid: true
-        }
-      ]);
-    } 
-    
-    else if (scenario === "sales_currencies") {
-      setFileName("India_Commission_Awards_Q2.csv");
-      setUploadState("uploaded");
-
-      const salesTmpl = templates.find(t => t.id === "tmpl_sales_award") || DEFAULT_TEMPLATES[1];
-      setDetectedTemplate(salesTmpl);
-
-      setColumnMappings([
-        { sourceHeader: "Personnel_No", targetField: "employeeId", confidence: 100 },
-        { sourceHeader: "Full_Name", targetField: "employeeName", confidence: 98 },
-        { sourceHeader: "Region", targetField: "country", confidence: 97 },
-        { sourceHeader: "Payout_INR", targetField: "awardAmount", confidence: 99 },
-        { sourceHeader: "Quarter_Ref", targetField: "quarter", confidence: 95 }
-      ]);
-
-      setParsedRows([
-        {
-          id: "row-1",
-          data: { employeeId: "EMP-2109", employeeName: "Sai Gupta", country: "India", awardAmount: 150000, quarter: "Q2 2026" },
-          errors: [],
-          warnings: [
-            "AI Commission Outlier: Payout of ₹1,50,000 INR exceeds the default threshold limit of ₹1,00,000 INR."
-          ],
-          isValid: true
-        },
-        {
-          id: "row-2",
-          data: { employeeId: "EMP-1042", employeeName: "Amit Gupta", country: "India", awardAmount: 40000, quarter: "Q2 2026" },
-          errors: [],
-          warnings: [],
-          isValid: true
-        },
-        {
-          id: "row-3",
-          data: { employeeId: "EMP-0098", employeeName: "Sneha Patel", country: "India", awardAmount: 85000, quarter: "Q2 2026" },
-          errors: [],
-          warnings: [],
-          isValid: true
-        }
-      ]);
-    } 
-    
-    else if (scenario === "new_joiner_duplicates") {
-      setFileName("Onboarding_NewJoiner_India_Data.xlsx");
-      setUploadState("uploaded");
-
-      const joinerTmpl = templates.find(t => t.id === "tmpl_new_joiner") || DEFAULT_TEMPLATES[2];
-      setDetectedTemplate(joinerTmpl);
-
-      setColumnMappings([
-        { sourceHeader: "Emp_PS_Number", targetField: "employeeId", confidence: 99 },
-        { sourceHeader: "Onboard_Name", targetField: "employeeName", confidence: 97 },
-        { sourceHeader: "Country", targetField: "country", confidence: 100 },
-        { sourceHeader: "Joining_Date", targetField: "joiningDate", confidence: 95 },
-        { sourceHeader: "Job_Level", targetField: "grade", confidence: 91 },
-        { sourceHeader: "Base_Compensation", targetField: "baseSalary", confidence: 98 },
-        { sourceHeader: "Corp_Email", targetField: "email", confidence: 100 }
-      ]);
-
-      setParsedRows([
-        {
-          id: "row-1",
-          data: { employeeId: "EMP-1042", employeeName: "Amit Gupta", country: "India", joiningDate: "2026-07-15", grade: "Grade 9", baseSalary: 185000, email: "amit.gupta@nexus-corp.in" },
-          errors: ["Personnel ID EMP-1042 is already registered. (Duplicate employee PS-Number found in active India database!)"],
-          warnings: ["Email formatting looks correct but employee ID exists under an active contract."],
-          isValid: false
-        },
-        {
-          id: "row-2",
-          data: { employeeId: "EMP-4050", employeeName: "Sai Sharma", country: "India", joiningDate: "2026-07-20", grade: "Grade 7", baseSalary: 95000, email: "sai.sharma.nexus-corp.in" },
-          errors: ["Corporate email must match standard domain formatting (Missing '@' or domain suffix)."],
-          warnings: [],
-          isValid: false
-        },
-        {
-          id: "row-3",
-          data: { employeeId: "EMP-5011", employeeName: "Priya Patel", country: "India", joiningDate: "2026-07-16", grade: "Grade 8", baseSalary: 110000, email: "priya.patel@nexus-corp.in" },
-          errors: [],
-          warnings: [],
-          isValid: true
-        }
-      ]);
-    } 
-    
-    else if (scenario === "unrecognized_learning") {
-      // Trigger "AI Template Learning capability"!
-      setFileName("Remote_Work_Allowance.xlsx");
-      setLearningSheet({
-        fileName: "Remote_Work_Allowance.xlsx",
-        columns: ["Personnel ID", "Full Name", "Allowance Amount", "Equipment Provision", "Work Location", "FTE Ratio"]
+  // --- Load history helper ---
+  const loadHistory = async () => {
+    try {
+      const hSnap = await getDocs(collection(db, "upload_history"));
+      const list = hSnap.docs.map(d => {
+        const dData = d.data();
+        return {
+          id: d.id,
+          fileName: dData.fileName,
+          templateName: dData.templateName || dData.templateId || "Custom Schema",
+          recordsCount: dData.recordsCount || 0,
+          time: dData.timestamp ? dData.timestamp.replace("T", " ").substring(0, 16) : new Date().toISOString().replace("T", " ").substring(0, 16),
+          status: dData.status || "Completed",
+          mappingScore: dData.mappingQuality || 100,
+          user: dData.uploadedBy || "Ronak Surve"
+        } as IngestionHistoryItem;
       });
+      setHistoryItems(list.sort((a, b) => b.time.localeCompare(a.time)));
+    } catch (err) {
+      console.error("Failed loading history logs:", err);
     }
   };
 
-  const handleFileParsing = (file: File) => {
+  // --- Fuzzy Matching Header Comparison Algorithm (>=95% Accuracy check) ---
+  const calculateHeaderSimilarity = (
+    uploaded: string[], 
+    tmpl: PayrollTemplate
+  ): { score: number; mappings: { sourceHeader: string; targetField: string; confidence: number }[] } => {
+    const normalize = (h: string) => h.toLowerCase().trim().replace(/[_\-\s]/g, "");
+    const normUploaded = uploaded.map(h => ({ original: h, normalized: normalize(h) }));
+    
+    let matches = 0;
+    const mappings: { sourceHeader: string; targetField: string; confidence: number }[] = [];
+    const usedHeaders = new Set<string>();
+
+    // Pass 1: Exact or near-exact matches
+    tmpl.requiredFields.forEach(field => {
+      const normLabel = normalize(field.label);
+      const normKey = normalize(field.key);
+
+      const exactMatch = normUploaded.find(u => 
+        !usedHeaders.has(u.original) && (u.normalized === normLabel || u.normalized === normKey)
+      );
+
+      if (exactMatch) {
+        matches++;
+        usedHeaders.add(exactMatch.original);
+        mappings.push({
+          sourceHeader: exactMatch.original,
+          targetField: field.key,
+          confidence: 100
+        });
+      }
+    });
+
+    // Pass 2: Synonym/fuzzy matching
+    tmpl.requiredFields.forEach(field => {
+      if (mappings.some(m => m.targetField === field.key)) return;
+
+      const normLabel = normalize(field.label);
+      const normKey = normalize(field.key);
+      const currentFieldKey = field.key.toLowerCase();
+
+      const synonymMatch = normUploaded.find(u => {
+        if (usedHeaders.has(u.original)) return false;
+
+        if (currentFieldKey === "employeeid") {
+          const isIdWord = u.normalized === "id" || u.normalized === "empid" || u.normalized.includes("ps") || u.normalized.includes("staff") || u.normalized.includes("personnel") || u.normalized.includes("employeeid");
+          const isNameWord = u.normalized.includes("name");
+          if (isIdWord && !isNameWord) return true;
+        }
+
+        if (currentFieldKey === "employeename") {
+          const containsIdKeywords = u.normalized.includes("id") || u.normalized.includes("code") || u.normalized.includes("num") || u.normalized.includes("no") || u.normalized.includes("ps");
+          const containsNameKeywords = u.normalized.includes("name") || u.normalized.includes("fullname") || u.normalized === "employee" || u.normalized === "emp" || u.normalized === "worker";
+          if (containsNameKeywords && !containsIdKeywords) return true;
+        }
+
+        if (currentFieldKey === "country") {
+          const isCountryWord = u.normalized.includes("country") || u.normalized.includes("region") || u.normalized.includes("location") || u.normalized.includes("zone") || u.normalized.includes("hub");
+          if (isCountryWord) return true;
+        }
+
+        if (u.normalized.includes(normLabel) || normLabel.includes(u.normalized)) return true;
+        if (u.normalized.includes(normKey) || normKey.includes(u.normalized)) return true;
+
+        return false;
+      });
+
+      if (synonymMatch) {
+        matches++;
+        usedHeaders.add(synonymMatch.original);
+        mappings.push({
+          sourceHeader: synonymMatch.original,
+          targetField: field.key,
+          confidence: 95
+        });
+      }
+    });
+
+    const score = matches / tmpl.requiredFields.length;
+    return { score, mappings };
+  };
+
+  // --- Process Rows with Mappings Helper ---
+  const processRowsWithMappings = (
+    rows: any[][],
+    mappings: { sourceHeader: string; targetField: string; confidence: number }[] ,
+    template: PayrollTemplate
+  ) => {
+    const firstRow = rows[0];
+    if (!firstRow) return;
+
+    const parsed: SpreadsheetRow[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const rowData = rows[i];
+      if (!rowData || (Array.isArray(rowData) && rowData.filter(Boolean).length === 0)) {
+        continue;
+      }
+
+      const dataMap: { [key: string]: any } = {};
+      template.requiredFields.forEach(f => {
+        dataMap[f.key] = f.type === "number" ? 0 : "";
+      });
+
+      mappings.forEach(mapping => {
+        if (!mapping.targetField) return;
+        const headerIndex = firstRow.findIndex(h => String(h || "").trim() === mapping.sourceHeader);
+        if (headerIndex !== -1 && rowData[headerIndex] !== undefined) {
+          let cellVal = rowData[headerIndex];
+          const fieldDef = template.requiredFields.find(f => f.key === mapping.targetField);
+          if (fieldDef) {
+            if (fieldDef.type === "number") {
+              cellVal = Number(String(cellVal).replace(/[^0-9.-]/g, "")) || 0;
+            } else {
+              cellVal = String(cellVal).trim();
+            }
+          }
+          dataMap[mapping.targetField] = cellVal;
+        }
+      });
+
+      parsed.push({
+        id: `row-${i}-${Date.now().toString().slice(-4)}`,
+        data: dataMap,
+        errors: [],
+        warnings: [],
+        isValid: true
+      });
+    }
+
+    setParsedRows(parsed);
+  };
+
+  // --- Real File Parsing Pipeline using FileReader & SheetJS (xlsx) ---
+  const handleFileParsing = (file: File, overrideTemplates?: PayrollTemplate[]) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -519,56 +633,33 @@ export default function DataIntegrationView({
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
-        // Convert to array of arrays so we can easily parse headers and rows
         const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
         if (rawRows.length === 0) {
-          alert("The uploaded file is empty.");
+          alert("The uploaded spreadsheet file appears to be completely empty.");
           return;
         }
 
-        // Extract headers (first row)
         const firstRow = rawRows[0];
         if (!firstRow || !Array.isArray(firstRow)) {
-          alert("Could not detect headers in the file.");
+          alert("Failed to read headers from the spreadsheet. Check structure.");
           return;
         }
 
         const headers = firstRow.map(h => String(h || "").trim()).filter(Boolean);
         if (headers.length === 0) {
-          alert("Could not detect any non-empty headers in the file.");
+          alert("Failed to find any non-empty header entries in the first row.");
           return;
         }
 
-        // Find the best matching template based on header names
+        // Search for best matching template with >=95% similarity
         let bestTmpl: PayrollTemplate | null = null;
         let bestScore = -1;
         let bestMappings: { sourceHeader: string; targetField: string; confidence: number }[] = [];
 
-        // We compare clean headers to required fields in templates
-        templates.forEach(tmpl => {
-          let matches = 0;
-          const mappings: { sourceHeader: string; targetField: string; confidence: number }[] = [];
-
-          tmpl.requiredFields.forEach(field => {
-            // Find a header that matches field label or key
-            const matchedHeader = headers.find(h => {
-              const normalH = h.toLowerCase().replace(/[^a-z0-9]/g, "");
-              const normalLabel = field.label.toLowerCase().replace(/[^a-z0-9]/g, "");
-              const normalKey = field.key.toLowerCase().replace(/[^a-z0-9]/g, "");
-              return normalH.includes(normalLabel) || normalLabel.includes(normalH) || normalH.includes(normalKey);
-            });
-
-            if (matchedHeader) {
-              matches++;
-              mappings.push({
-                sourceHeader: matchedHeader,
-                targetField: field.key,
-                confidence: 90 + Math.round(Math.random() * 10)
-              });
-            }
-          });
-
-          const score = matches / tmpl.requiredFields.length;
+        const templatesToUse = overrideTemplates || templates;
+        templatesToUse.forEach(tmpl => {
+          if (tmpl.status === "Inactive") return;
+          const { score, mappings } = calculateHeaderSimilarity(headers, tmpl);
           if (score > bestScore) {
             bestScore = score;
             bestTmpl = tmpl;
@@ -576,319 +667,335 @@ export default function DataIntegrationView({
           }
         });
 
-        // If match score is decent (e.g. at least 2 fields or score > 30%)
-        if (bestTmpl && bestScore >= 0.3) {
+        // Similarity must be >= 95% (bestScore >= 0.95 or close)
+        if (bestTmpl && bestScore >= 0.95) {
           setFileName(file.name);
           setDetectedTemplate(bestTmpl);
           setColumnMappings(bestMappings);
+          setUploadedRawRows(rawRows);
 
-          // Convert rows to parsedRows
-          const parsed: SpreadsheetRow[] = [];
-          for (let i = 1; i < rawRows.length; i++) {
-            const rowData = rawRows[i];
-            if (!rowData || (Array.isArray(rowData) && rowData.filter(Boolean).length === 0)) {
-              continue; // skip empty rows
-            }
+          processRowsWithMappings(rawRows, bestMappings, bestTmpl);
 
-            // Map row data to template fields
-            const dataMap: { [key: string]: any } = {};
-            // Initialize fields with defaults or empty
-            bestTmpl.requiredFields.forEach(f => {
-              dataMap[f.key] = f.type === "number" ? 0 : "";
-            });
-
-            // Fill values from the matched columns
-            bestMappings.forEach(mapping => {
-              const headerIndex = firstRow.findIndex(h => String(h || "").trim() === mapping.sourceHeader);
-              if (headerIndex !== -1 && rowData[headerIndex] !== undefined) {
-                let cellVal = rowData[headerIndex];
-                if (bestTmpl) {
-                  const fieldDef = bestTmpl.requiredFields.find(f => f.key === mapping.targetField);
-                  if (fieldDef) {
-                    if (fieldDef.type === "number") {
-                      cellVal = Number(String(cellVal).replace(/[^0-9.-]/g, "")) || 0;
-                    } else if (fieldDef.type === "date") {
-                      cellVal = String(cellVal).trim();
-                    } else {
-                      cellVal = String(cellVal).trim();
-                    }
-                  }
-                }
-                dataMap[mapping.targetField] = cellVal;
-              }
-            });
-
-            // Perform validation checks on this row
-            const errors: string[] = [];
-            const warnings: string[] = [];
-
-            // 1. Mandatory checks
-            bestTmpl.requiredFields.forEach(field => {
-              if (field.isMandatory) {
-                const val = dataMap[field.key];
-                if (val === undefined || val === null || String(val).trim() === "") {
-                  errors.push(`${field.label} is a mandatory field.`);
-                }
-              }
-            });
-
-            // 2. Country validation checks
-            const country = String(dataMap["country"] || "Global").trim();
-            bestTmpl.countryValidations.forEach(vRule => {
-              if (vRule.country === "Global" || vRule.country.toLowerCase() === country.toLowerCase()) {
-                const fieldVal = dataMap[vRule.field];
-                if (vRule.condition === "max_hours" && Number(fieldVal) > Number(vRule.value)) {
-                  errors.push(vRule.errorMessage);
-                }
-                if (vRule.condition === "max_amount" && Number(fieldVal) > Number(vRule.value)) {
-                  errors.push(vRule.errorMessage);
-                }
-                if (vRule.condition === "format_email") {
-                  const emailStr = String(fieldVal);
-                  if (!emailStr.includes("@") || !emailStr.endsWith(".com")) {
-                    errors.push(vRule.errorMessage);
-                  }
-                }
-                if (vRule.condition === "not_duplicate_ps" && String(fieldVal) === "EMP-1042" && country.toLowerCase() === "united states") {
-                  errors.push(vRule.errorMessage);
-                }
-              }
-            });
-
-            // 3. AI Outliers / warnings
-            if (bestTmpl.id === "tmpl_overtime") {
-              const otHours = Number(dataMap["overtimeHours"]);
-              if (otHours > 35) {
-                warnings.push(`AI Outlier Detection: Unusually high overtime hours (${otHours} hours) flagged.`);
-              }
-            }
-            if (bestTmpl.id === "tmpl_sales_award") {
-              const amt = Number(dataMap["awardAmount"]);
-              if (amt > 10000) {
-                warnings.push(`AI Commission Outlier: Payout of $${amt} USD exceeds standard audit guidelines.`);
-              }
-            }
-
-            parsed.push({
-              id: `row-${i}-${Date.now().toString().slice(-4)}`,
-              data: dataMap,
-              errors,
-              warnings,
-              isValid: errors.length === 0
-            });
-          }
-
-          setParsedRows(parsed);
           setUploadState("uploaded");
           setLearningSheet(null);
+          setPendingFile(null);
         } else {
-          // If no good template matches, activate AI learning flow with the actual parsed headers of the Excel!
+          // Trigger AI Adaptive Learning flow since no registered templates met the threshold
           setFileName(file.name);
           setLearningSheet({
             fileName: file.name,
             columns: headers
           });
+          setPendingFile(file);
           setUploadState("idle");
         }
       } catch (err) {
-        console.error("Error reading file:", err);
-        alert("NEXUS Ingestion Error: Failed to parse spreadsheet file. Please verify it is a valid .xlsx, .xls, or .csv document.");
+        console.error("Spreadsheet ingestion parser error:", err);
+        alert("NEXUS Ingestion Error: Failed to parse file format. Please ensure it is a valid .csv, .xls, or .xlsx spreadsheet.");
       }
     };
     reader.readAsArrayBuffer(file);
   };
 
-  // --- Drag & Drop Operations ---
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileParsing(e.dataTransfer.files[0]);
-    }
-  };
-
-  const startAiMapping = () => {
+  // --- Run AI Validation Jobs (Phase 7 - Live Programmatic Checks) ---
+  const handleRunAiValidation = async () => {
+    if (!detectedTemplate) return;
     setUploadState("mapping");
-    setTimeout(() => {
-      setUploadState("review");
-    }, 1800);
+
+    // Perform validation processing asynchronously
+    setTimeout(async () => {
+      try {
+        const validated = parsedRows.map(row => {
+          const errors: string[] = [];
+          const warnings: string[] = [];
+
+           const psNumber = String(row.data["employeeId"] || row.data["employeeid"] || "").trim();
+           const country = String(row.data["country"] || "Global").trim();
+ 
+           // 1. Check for Missing Fields (Mandatory check)
+           detectedTemplate.requiredFields.forEach(field => {
+             if (field.isMandatory) {
+               const val = row.data[field.key];
+               if (val === undefined || val === null || String(val).trim() === "") {
+                 errors.push(`Mandatory attribute "${field.label}" is missing.`);
+               }
+             }
+           });
+ 
+           // 2. Check for Duplicate PS Numbers within the uploaded batch run
+           if (psNumber) {
+             const batchMatches = parsedRows.filter(r => String(r.data["employeeId"] || r.data["employeeid"] || "").trim() === psNumber).length;
+             if (batchMatches > 1) {
+               errors.push(`Duplicate employee PS Number "${psNumber}" detected within the uploaded spreadsheet dataset.`);
+             }
+           }
+
+          // 3. Check for Negative Salary/Deduction Amounts
+          detectedTemplate.requiredFields.forEach(field => {
+            if (field.type === "number") {
+              const val = Number(row.data[field.key]);
+              if (val < 0) {
+                errors.push(`Negative payroll numeric parameter not permitted for "${field.label}" (${val}).`);
+              }
+            }
+          });
+
+          // 4. Check for Invalid/Future Calendars Dates
+          detectedTemplate.requiredFields.forEach(field => {
+            if (field.type === "date") {
+              const val = row.data[field.key];
+              if (val) {
+                const dateObj = new Date(val);
+                if (isNaN(dateObj.getTime())) {
+                  errors.push(`Date format compliance error for attribute "${field.label}".`);
+                } else if (dateObj > new Date()) {
+                  errors.push(`Future-dated calendar value mismatch for "${field.label}".`);
+                }
+              }
+            }
+          });
+
+          // 5. Check Employee Existence inside system directories (except for New Joiner)
+          const isNewJoiner = detectedTemplate.id === "tmpl_new_joiner";
+          const dbProfile = employeesList.find(e => String(e.id).trim().toLowerCase() === psNumber.toLowerCase());
+
+          if (!isNewJoiner && psNumber) {
+            if (!dbProfile) {
+              errors.push(`Personnel mismatch: PS Number "${psNumber}" does not exist in active corporate master directories.`);
+            }
+          }
+
+          // 6. Check for Invalid Corporate Grade
+          if (dbProfile) {
+            if (row.data["grade"] && row.data["grade"] !== dbProfile.grade) {
+              warnings.push(`Sovereign Grade Alignment Warning: File indicates "${row.data["grade"]}" while DB has "${dbProfile.grade}".`);
+            }
+            if (detectedTemplate.id === "tmpl_promotion" && row.data["currentGrade"]) {
+              if (row.data["currentGrade"] !== dbProfile.grade) {
+                warnings.push(`Promotion discrepancy: Provided current grade "${row.data["currentGrade"]}" does not match DB directory record.`);
+              }
+            }
+          }
+
+          // 7. Check for Missing Approver
+          if (!detectedTemplate.approvalWorkflow || detectedTemplate.approvalWorkflow.length === 0) {
+            errors.push("Workflow routing error: No multi-stage approvers are mapped to this template event.");
+          }
+
+          // 8. Sovereign Region Rules Validation
+          detectedTemplate.countryValidations.forEach(valRule => {
+            if (valRule.country === "Global" || valRule.country.toLowerCase() === country.toLowerCase()) {
+              const fieldVal = Number(row.data[valRule.field]);
+              if (valRule.condition === "max_hours" && fieldVal > Number(valRule.value)) {
+                errors.push(valRule.errorMessage);
+              }
+              if (valRule.condition === "max_amount" && fieldVal > Number(valRule.value)) {
+                errors.push(valRule.errorMessage);
+              }
+            }
+          });
+
+          // 9. Interactive Sales Award Currency Conversion (USD -> employee local rate)
+          if (detectedTemplate.id === "tmpl_sales_award" && row.data["amountUsd"]) {
+            const usdAmount = Number(row.data["amountUsd"]);
+            const currencyTarget = dbProfile?.currency || "INR";
+            
+            let rate = 83.5; // default USD/INR
+            if (currencyTarget === "SGD") rate = 1.34;
+            else if (currencyTarget === "EUR") rate = 0.92;
+            else if (currencyTarget === "JPY") rate = 155.0;
+
+            const localVal = usdAmount * rate;
+            row.data["amount"] = Math.round(localVal);
+            warnings.push(`AI Smart Ingest Conversion: Automatically converted $${usdAmount} USD to ${Math.round(localVal).toLocaleString()} ${currencyTarget} (exchange rate: 1 USD = ${rate} ${currencyTarget}).`);
+          }
+
+          return {
+            ...row,
+            errors,
+            warnings,
+            isValid: errors.length === 0
+          };
+        });
+
+        setParsedRows(validated);
+
+        // Persistent Firestore log to 'validation_reports'
+        const total = validated.length;
+        const invalid = validated.filter(r => !r.isValid).length;
+        await addDoc(collection(db, "validation_reports"), {
+          timestamp: new Date().toISOString(),
+          fileName,
+          templateId: detectedTemplate.id,
+          templateName: detectedTemplate.name,
+          totalRecords: total,
+          validRecords: total - invalid,
+          invalidRecords: invalid,
+          status: "Completed",
+          triggeredBy: "Ronak Surve"
+        });
+
+        setUploadState("review");
+      } catch (err) {
+        console.error("AI Validation pass triggered error:", err);
+        alert("Encountered internal system error running the validation engine.");
+        setUploadState("uploaded");
+      }
+    }, 1200);
   };
 
-  // --- Interactive Row Editing & Fixing ---
-  const handleStartEditRow = (row: SpreadsheetRow) => {
-    setEditingRow({ ...row, data: { ...row.data } });
-  };
-
+  // --- Inline Row Edits ---
   const handleSaveEditedRow = () => {
-    if (!editingRow) return;
+    if (!editingRow || !detectedTemplate) return;
 
-    // Run dynamic client-side validation logic immediately on save
-    const updatedRow = { ...editingRow };
+    // Run programmatic validation rules instantly on individual record edits
+    const updated = { ...editingRow };
     const errs: string[] = [];
     const warns: string[] = [];
 
-    // 1. Mandatory Field Checks
-    if (detectedTemplate) {
-      detectedTemplate.requiredFields.forEach(field => {
-        if (field.isMandatory) {
-          const val = updatedRow.data[field.key];
-          if (val === undefined || val === null || String(val).trim() === "") {
-            errs.push(`${field.label} is a mandatory field.`);
-          }
-        }
-      });
-
-      // 2. Country Specific Validation Rules Checks
-      const country = updatedRow.data["country"] || "Global";
-      detectedTemplate.countryValidations.forEach(vRule => {
-        if (vRule.country === "Global" || vRule.country === country) {
-          const fieldVal = updatedRow.data[vRule.field];
-          
-          if (vRule.condition === "max_hours" && Number(fieldVal) > Number(vRule.value)) {
-            errs.push(vRule.errorMessage);
-          }
-          if (vRule.condition === "max_amount" && Number(fieldVal) > Number(vRule.value)) {
-            errs.push(vRule.errorMessage);
-          }
-          if (vRule.condition === "format_email") {
-            const emailStr = String(fieldVal);
-            if (!emailStr.includes("@") || !emailStr.endsWith(".com")) {
-              errs.push(vRule.errorMessage);
-            }
-          }
-          if (vRule.condition === "not_duplicate_ps" && String(fieldVal) === "EMP-1042" && country === "United States") {
-            errs.push(vRule.errorMessage);
-          }
-        }
-      });
-
-      // 3. Highlight Outliers (Overtime, variable limit warn)
-      if (detectedTemplate.id === "tmpl_overtime") {
-        const otHours = Number(updatedRow.data["overtimeHours"]);
-        if (otHours > 35) {
-          warns.push(`AI Outlier Detection: Unusually high overtime hours (${otHours} hours) flagged.`);
+    detectedTemplate.requiredFields.forEach(field => {
+      if (field.isMandatory) {
+        const val = updated.data[field.key];
+        if (val === undefined || val === null || String(val).trim() === "") {
+          errs.push(`Mandatory attribute "${field.label}" is missing.`);
         }
       }
-      if (detectedTemplate.id === "tmpl_sales_award") {
-        const amt = Number(updatedRow.data["awardAmount"]);
-        if (amt > 10000) {
-          warns.push(`AI Commission Outlier: Payout of $${amt} USD exceeds standard audit guidelines.`);
+    });
+
+    detectedTemplate.requiredFields.forEach(field => {
+      if (field.type === "number") {
+        const val = Number(updated.data[field.key]);
+        if (val < 0) {
+          errs.push(`Negative payroll parameter not permitted for "${field.label}".`);
         }
       }
-    }
+    });
 
-    updatedRow.errors = errs;
-    updatedRow.warnings = warns;
-    updatedRow.isValid = errs.length === 0;
+    updated.errors = errs;
+    updated.warnings = warns;
+    updated.isValid = errs.length === 0;
 
-    setParsedRows(prev => prev.map(r => r.id === updatedRow.id ? updatedRow : r));
+    setParsedRows(prev => prev.map(r => r.id === updated.id ? updated : r));
     setEditingRow(null);
   };
 
-  // --- Import Valid Records Only ---
+  // --- Final Commit Import Valid Records Only (Phase 9/11 Permanent Writes) ---
   const handleCommitImport = async () => {
-    const validCount = parsedRows.filter(r => r.isValid).length;
-    const totalCount = parsedRows.length;
-
-    if (validCount === 0) {
-      alert("No valid records to import. Please correct the errors before committing.");
+    const validRows = parsedRows.filter(r => r.isValid);
+    if (validRows.length === 0) {
+      alert("No valid records found in the current review batch to import.");
       return;
     }
 
     try {
-      // 1. Log Ingest event in Firestore AuditLogs
+      // 1. Add record to 'upload_history' collection in Firestore
+      await addDoc(collection(db, "upload_history"), {
+        fileName,
+        templateId: detectedTemplate?.id || "Custom",
+        templateName: detectedTemplate?.name || "Excel Ingest",
+        recordsCount: validRows.length,
+        timestamp: new Date().toISOString(),
+        uploadedBy: "Ronak Surve",
+        status: "Completed",
+        mappingQuality: Math.round((validRows.length / parsedRows.length) * 100)
+      });
+
+      // 2. Add audit log event entry
       await addDoc(collection(db, "AuditLogs"), {
         timestamp: new Date().toISOString(),
         user: "Ronak Surve (Super Admin)",
         role: "Super Admin",
-        action: `Ingested ${validCount} valid payroll records for template: ${detectedTemplate?.name}`,
-        details: `Imported file ${fileName}. Skipped ${totalCount - validCount} invalid records.`
+        action: `Ingested ${validRows.length} valid entries into payroll run`,
+        details: `Successfully completed ledger ingest processing for schema: ${detectedTemplate?.name}.`
       });
 
-      // 2. Add to local history list
-      const newItem: IngestionHistoryItem = {
-        id: `h-${Date.now()}`,
-        fileName: fileName,
-        templateName: detectedTemplate?.name || "Manual Ingest",
-        recordsCount: validCount,
-        time: new Date().toISOString().replace("T", " ").substring(0, 16),
-        status: "Completed",
-        mappingScore: Math.round((validCount / totalCount) * 100),
-        user: "Ronak Surve"
-      };
-      setHistoryItems(prev => [newItem, ...prev]);
-
-      alert(`NEXUS Engine: Successfully imported ${validCount} valid records. Ingested into regional workspace databases.`);
+      alert(`Ingestion Successful!\nSuccessfully processed and committed ${validRows.length} payroll records into active country ledger databases.`);
+      
       setUploadState("idle");
       setFileName("");
       setDetectedTemplate(null);
       setParsedRows([]);
-      
-      onIngestionComplete(); // Refresh global numbers
-    } catch (e) {
-      console.error(e);
-      alert("Error logging import action to Firestore database.");
+      onIngestionComplete(); // notify parent component
+      await loadHistory();   // refresh history log
+    } catch (err) {
+      console.error("Failed to write to Firestore:", err);
+      alert("Persistent storage error occurred committing the imported records.");
     }
   };
 
-  // --- AI Template Learning System Wizard ---
+  // --- AI Adaptive Learning Wizard: Learn and Register Template (Phase 5) ---
   const handleSaveLearnedTemplate = async () => {
     if (!learningSheet) return;
 
-    // Register a brand-new learned template dynamically
+    const learnedId = `TMP-${Math.floor(1000 + Math.random() * 9000)}`;
     const newTmpl: PayrollTemplate = {
-      id: `tmpl_${learningSheet.fileName.toLowerCase().replace(/\./g, "_").replace(/\s+/g, "_")}`,
-      name: learningSheet.fileName.replace(".xlsx", "").replace(".csv", ""),
-      description: `AI-learned payroll template parsed from uploaded dataset: ${learningSheet.fileName}`,
+      id: learnedId,
+      templateId: learnedId,
+      name: learningSheet.fileName.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+      templateName: learningSheet.fileName.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+      description: `AI Adaptive learned schema dynamically extracted from file: ${learningSheet.fileName}`,
       version: 1,
-      currency: "USD",
-      requiredFields: learningSheet.columns.map(col => ({
-        key: col.toLowerCase().replace(/\s+/g, ""),
-        label: col,
-        type: col.toLowerCase().includes("amount") || col.toLowerCase().includes("rate") ? "number" : "string",
-        isMandatory: col.toLowerCase().includes("id") || col.toLowerCase().includes("name")
-      })),
+      headers: learningSheet.columns,
+      mandatoryFields: [learningSheet.columns[0]],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "Active",
+      createdBy: "System Learned",
+      currency: "Global",
+      requiredFields: learningSheet.columns.map((col, idx) => {
+        const clean = col.toLowerCase().trim();
+        let type: "string" | "number" | "boolean" | "date" = "string";
+        if (clean.includes("amount") || clean.includes("salary") || clean.includes("hours") || clean.includes("rate") || clean.includes("pay") || clean.includes("bonus")) {
+          type = "number";
+        } else if (clean.includes("date")) {
+          type = "date";
+        }
+        return {
+          key: clean.replace(/[_\-\s]+/g, ""),
+          label: col,
+          type,
+          isMandatory: idx === 0
+        };
+      }),
       countryValidations: [],
-      aiRules: ["Validate field data alignments in compliance with global operational policies."],
+      aiRules: ["Audit parameters in compliance with system settings."],
       approvalWorkflow: ["HR Specialist", "Payroll Auditor"]
     };
 
     try {
-      // Save directly to Firestore collection! It is immediately reusable!
-      await setDoc(doc(db, "PayrollTemplates", newTmpl.id), newTmpl);
-      setTemplates(prev => [...prev, newTmpl]);
-
-      // Add audit log
+      console.log("Saving learned template to template_registry with ID:", learnedId);
+      await setDoc(doc(db, "template_registry", learnedId), newTmpl);
+      
+      const updatedTemplates = [...templates, newTmpl];
+      setTemplates(updatedTemplates);
+      
       await addDoc(collection(db, "AuditLogs"), {
         timestamp: new Date().toISOString(),
         user: "Ronak Surve (Super Admin)",
         role: "Super Admin",
-        action: `AI learned and saved new template: ${newTmpl.name}`,
-        details: `Discovered and automatically mapped ${learningSheet.columns.length} columns from ${learningSheet.fileName}.`
+        action: `Registered AI Learned Template: ${newTmpl.name}`,
+        details: `Discovered and structured ${learningSheet.columns.length} schema headers automatically.`
       });
 
-      alert(`NEXUS Success! Learned template "${newTmpl.name}" registered successfully. Administrators can now edit validations, approval flows, or use this file template instantly!`);
+      alert(`AI Adaptive Learning Success!\nNew schema "${newTmpl.name}" (ID: ${learnedId}) registered into database registry. It is instantly reusable for future payroll runs!`);
+      
+      const fileToReparse = pendingFile;
       setLearningSheet(null);
       setFileName("");
-    } catch (err) {
-      console.error(err);
-      alert("Failed saving learned template to Firestore.");
+      setPendingFile(null);
+
+      // Automatically re-parse the file so it matches the newly registered template immediately!
+      if (fileToReparse) {
+        console.log("Auto-reparsing file with newly learned template:", fileToReparse.name);
+        handleFileParsing(fileToReparse, updatedTemplates);
+      }
+    } catch (err: any) {
+      console.error("Failed to register learned template:", err);
+      alert(`Failed registering learned template to database: ${err.message || err}`);
     }
   };
 
-  // --- Dynamic Template Manager Form CRUD ---
+  // --- Dynamic Template Engine CRUD & Schema Actions (Phase 8) ---
   const handleOpenCreateTemplate = (tmpl: PayrollTemplate | null) => {
     if (tmpl) {
       setEditingTemplate(tmpl);
@@ -904,152 +1011,246 @@ export default function DataIntegrationView({
       setFormTemplateName("");
       setFormTemplateDesc("");
       setFormTemplateFields([
-        { key: "employeeId", label: "Personnel ID", type: "string", isMandatory: true },
-        { key: "employeeName", label: "Full Name", type: "string", isMandatory: true },
+        { key: "employeeId", label: "PS Number", type: "string", isMandatory: true },
+        { key: "employeeName", label: "Name of Employee", type: "string", isMandatory: true },
         { key: "country", label: "Country", type: "string", isMandatory: true }
       ]);
       setFormCountryVal([]);
       setFormCurrency("USD");
       setFormWorkflow(["HR Specialist", "Payroll Lead"]);
-      setFormAiRules(["Verify matching database Personnel IDs."]);
+      setFormAiRules(["Verify database Personnel IDs."]);
     }
     setIsCreatingTemplate(true);
   };
 
-  const handleAddField = () => {
-    setFormTemplateFields(prev => [
-      ...prev,
-      { key: `custom_${Date.now()}`, label: "New Field", type: "string", isMandatory: false }
-    ]);
-  };
-
-  const handleRemoveField = (index: number) => {
-    setFormTemplateFields(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleFieldChange = (index: number, key: string, val: any) => {
-    setFormTemplateFields(prev => prev.map((f, i) => {
-      if (i === index) {
-        const updated = { ...f, [key]: val };
-        if (key === "label") {
-          updated.key = val.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-        }
-        return updated;
-      }
-      return f;
-    }));
-  };
-
-  const handleAddCountryValidation = () => {
-    setFormCountryVal(prev => [
-      ...prev,
-      { country: "India", field: "overtimeHours", condition: "max_hours", value: "50", errorMessage: "Value exceeds statutory guidelines." }
-    ]);
-  };
-
-  const handleRemoveCountryValidation = (index: number) => {
-    setFormCountryVal(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleCountryValChange = (index: number, key: string, val: any) => {
-    setFormCountryVal(prev => prev.map((v, i) => i === index ? { ...v, [key]: val } : v));
-  };
-
-  const handleAddAiRule = () => {
-    setFormAiRules(prev => [...prev, "Check for unusually high amount variables exceeding typical standards."]);
-  };
-
-  const handleRemoveAiRule = (index: number) => {
-    setFormAiRules(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleAiRuleChange = (index: number, value: string) => {
-    setFormAiRules(prev => prev.map((r, i) => i === index ? value : r));
-  };
-
   const handleSaveDynamicTemplate = async () => {
     if (!formTemplateName.trim()) {
-      alert("Template name is required.");
+      alert("Please specify a template name.");
       return;
     }
 
-    const templateId = editingTemplate ? editingTemplate.id : `tmpl_${formTemplateName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")}`;
-    const newVersion = editingTemplate ? (editingTemplate.version + 1) : 1;
-
-    const savedTmpl: PayrollTemplate = {
-      id: templateId,
+    const tId = editingTemplate ? editingTemplate.id : `tmpl_${formTemplateName.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;
+    const saved: PayrollTemplate = {
+      id: tId,
+      templateId: tId,
       name: formTemplateName,
+      templateName: formTemplateName,
       description: formTemplateDesc,
+      version: editingTemplate ? editingTemplate.version + 1 : 1,
+      headers: formTemplateFields.map(f => f.label),
+      mandatoryFields: formTemplateFields.filter(f => f.isMandatory).map(f => f.label),
+      createdAt: editingTemplate ? editingTemplate.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: editingTemplate ? editingTemplate.status : "Active",
+      createdBy: editingTemplate ? editingTemplate.createdBy : "Super Admin",
+      currency: formCurrency,
       requiredFields: formTemplateFields,
       countryValidations: formCountryVal,
-      currency: formCurrency,
       aiRules: formAiRules,
       approvalWorkflow: formWorkflow,
-      version: newVersion,
       isSystem: editingTemplate ? editingTemplate.isSystem : false
     };
 
     try {
-      // Save directly to Firestore for global access! No code changes required when templates evolve!
-      await setDoc(doc(db, "PayrollTemplates", templateId), savedTmpl);
-
-      await addDoc(collection(db, "AuditLogs"), {
-        timestamp: new Date().toISOString(),
-        user: "Ronak Surve (Super Admin)",
-        role: "Super Admin",
-        action: editingTemplate ? `Updated template schema: ${savedTmpl.name}` : `Created new payroll template: ${savedTmpl.name}`,
-        details: `Saved version ${newVersion} with ${formTemplateFields.length} active schema fields and ${formCountryVal.length} country validations.`
-      });
-
-      // Reload templates list from local state
+      await setDoc(doc(db, "template_registry", tId), saved);
       setTemplates(prev => {
-        const filtered = prev.filter(t => t.id !== templateId);
-        return [...filtered, savedTmpl];
+        const filtered = prev.filter(t => t.id !== tId);
+        return [...filtered, saved];
       });
-
-      alert(`Template "${savedTmpl.name}" successfully registered into Firestore! Instantly available for regional Excel file parsing.`);
       setIsCreatingTemplate(false);
       setEditingTemplate(null);
-    } catch (e) {
-      console.error(e);
-      alert("Failed storing template configuration to Firestore database.");
+      alert(`Template "${formTemplateName}" schema successfully recorded into database registry.`);
+    } catch (err) {
+      console.error(err);
+      alert("Error saving template configuration.");
     }
   };
 
-  const handleDeleteTemplate = async (tmplId: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete the "${name}" payroll template? This will permanently remove its schema from Firestore.`)) return;
+  const handleDeleteTemplate = (id: string, name: string) => {
+    showConfirm(
+      "Delete Template Schema",
+      `Are you sure you want to permanently delete template "${name}" from database registries?`,
+      async () => {
+        try {
+          await deleteDoc(doc(db, "template_registry", id));
+          setTemplates(prev => prev.filter(t => t.id !== id));
+          showAlert("Template Deleted", `Deleted template schema: ${name}`, "success");
+        } catch (err) {
+          console.error(err);
+          showAlert("Error", "Error removing schema.", "error");
+        }
+      }
+    );
+  };
 
+  const handleCloneTemplate = async (tmpl: PayrollTemplate) => {
+    const cloneId = `${tmpl.id}_clone_${Date.now().toString().slice(-4)}`;
+    const cloned: PayrollTemplate = {
+      ...tmpl,
+      id: cloneId,
+      templateId: cloneId,
+      name: `Copy of ${tmpl.name}`,
+      templateName: `Copy of ${tmpl.name}`,
+      version: 1,
+      isSystem: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
     try {
-      await deleteDoc(doc(db, "PayrollTemplates", tmplId));
-      setTemplates(prev => prev.filter(t => t.id !== tmplId));
-
-      await addDoc(collection(db, "AuditLogs"), {
-        timestamp: new Date().toISOString(),
-        user: "Ronak Surve (Super Admin)",
-        role: "Super Admin",
-        action: `Deleted payroll template schema: ${name}`,
-        details: `Template ID ${tmplId} has been successfully deleted from persistent storage.`
-      });
-
-      alert(`Template "${name}" deleted.`);
-    } catch (e) {
-      console.error(e);
-      alert("Error deleting template schema from Firestore.");
+      await setDoc(doc(db, "template_registry", cloneId), cloned);
+      setTemplates(prev => [...prev, cloned]);
+      alert(`Successfully cloned template as: "${cloned.name}"`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to clone template schema.");
     }
+  };
+
+  const handleToggleStatus = async (tmpl: PayrollTemplate) => {
+    const nextStatus = tmpl.status === "Inactive" ? "Active" : "Inactive";
+    try {
+      await updateDoc(doc(db, "template_registry", tmpl.id), { status: nextStatus });
+      setTemplates(prev => prev.map(t => t.id === tmpl.id ? { ...t, status: nextStatus } : t));
+      alert(`Template "${tmpl.name}" has been toggled to: ${nextStatus}`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed toggling status.");
+    }
+  };
+
+  const exportTemplateAsJson = (tmpl: PayrollTemplate) => {
+    const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tmpl, null, 2));
+    const dlLink = document.createElement("a");
+    dlLink.setAttribute("href", jsonStr);
+    dlLink.setAttribute("download", `${tmpl.id}_schema_registry.json`);
+    document.body.appendChild(dlLink);
+    dlLink.click();
+    dlLink.remove();
+  };
+
+  // --- Drag & Drop Operations ---
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
+    else if (e.type === "dragleave") setDragActive(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileParsing(e.dataTransfer.files[0]);
+    }
+  };
+
+  // --- ADMIN DEVELOPER CONTROLS ACTIONS (Phase 1 / Cleanup & Restore) ---
+  const clearCollection = async (collName: string) => {
+    const snap = await getDocs(collection(db, collName));
+    for (const dDoc of snap.docs) {
+      await deleteDoc(doc(db, collName, dDoc.id));
+    }
+  };
+
+  const handleAdminAction = (actionType: string) => {
+    showConfirm(
+      "Developer System Override",
+      `Are you sure you want to trigger: "${actionType}"? This action modifies the database permanently.`,
+      async () => {
+        try {
+          if (actionType === "Reset Demo Data") {
+            // Trigger server-side baseline reset
+            try {
+              await fetch("/api/mongodb/reset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ isDynamic: true, loadHistoric: true })
+              });
+            } catch (srvErr) {
+              console.warn("Server reset error ignored during client reset:", srvErr);
+            }
+
+            // Clear all histories, logs, and reset templates registry
+            await clearCollection("upload_history");
+            await clearCollection("validation_reports");
+            await clearCollection("workflow_logs");
+            await clearCollection("payroll_events");
+            await clearCollection("AuditLogs");
+            
+            // Remove learned templates, keep/restore defaults
+            await clearCollection("template_registry");
+            for (const tmpl of OFFICIAL_DEFAULT_TEMPLATES) {
+              await setDoc(doc(db, "template_registry", tmpl.id), tmpl);
+            }
+
+            setTemplates(OFFICIAL_DEFAULT_TEMPLATES);
+            setHistoryItems([]);
+            setLearningSheet(null);
+            setUploadState("idle");
+            showAlert("Action Complete", "Database has been completely clean-wiped and restored to default template registry!", "success");
+          } 
+          
+          else if (actionType === "Remove All Dummy Templates") {
+            // Remove templates not designated as system/defaults
+            const snap = await getDocs(collection(db, "template_registry"));
+            for (const dDoc of snap.docs) {
+              const t = dDoc.data();
+              if (t.createdBy !== "System" && !t.isSystem) {
+                await deleteDoc(doc(db, "template_registry", dDoc.id));
+              }
+            }
+            // reload templates
+            const updatedSnap = await getDocs(collection(db, "template_registry"));
+            setTemplates(updatedSnap.docs.map(doc => doc.data() as PayrollTemplate));
+            showAlert("Action Complete", "All custom or learned templates successfully deleted from database registries!", "success");
+          } 
+          
+          else if (actionType === "Clear Upload History") {
+            await clearCollection("upload_history");
+            await clearCollection("validation_reports");
+            setHistoryItems([]);
+            showAlert("Action Complete", "Sovereign historical ingestion registries successfully cleared!", "success");
+          } 
+          
+          else if (actionType === "Reset AI Learning Cache") {
+            setLearningSheet(null);
+            showAlert("Action Complete", "AI Learning temporary memory structures have been reset!", "success");
+          } 
+          
+          else if (actionType === "Clear Template Registry") {
+            await clearCollection("template_registry");
+            setTemplates([]);
+            showAlert("Action Complete", "Sovereign template registry collection completely purged!", "success");
+          } 
+          
+          else if (actionType === "Rebuild Default Payroll Templates") {
+            await clearCollection("template_registry");
+            for (const tmpl of OFFICIAL_DEFAULT_TEMPLATES) {
+              await setDoc(doc(db, "template_registry", tmpl.id), tmpl);
+            }
+            setTemplates(OFFICIAL_DEFAULT_TEMPLATES);
+            showAlert("Action Complete", "Rebuilt all 9 default corporate payroll event templates into database registry!", "success");
+          }
+
+          await loadHistory();
+        } catch (err) {
+          console.error(err);
+          showAlert("Operation Error", "Error executing administrator command on Firestore collection.", "error");
+        }
+      }
+    );
   };
 
   return (
     <div className="space-y-4" id="data_integration_main_wrapper">
-      {/* Tab select header */}
-      <div className="flex items-center justify-between border-b border-[#EDEBE9]/40 pb-1">
+      {/* Navigation tabs */}
+      <div className="flex items-center justify-between border-b border-slate-700/10 pb-1 flex-wrap gap-2">
         <div className="flex gap-2">
           <button
             onClick={() => { setActiveTab("upload"); setIsCreatingTemplate(false); setLearningSheet(null); }}
-            id="tab_excel_import"
-            className={`px-3 py-1.5 text-xs font-bold transition-all border-b-2 -mb-[6px] flex items-center gap-1.5 ${
-              activeTab === "upload" && !isCreatingTemplate
-                ? "border-[#0078D4] text-[#0078D4]"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+            className={`px-3 py-1.5 text-xs font-bold border-b-2 -mb-[6px] flex items-center gap-1.5 transition ${
+              activeTab === "upload" && !isCreatingTemplate ? "border-[#0078D4] text-[#0078D4]" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Upload size={13} />
@@ -1057,11 +1258,8 @@ export default function DataIntegrationView({
           </button>
           <button
             onClick={() => { setActiveTab("templates"); setIsCreatingTemplate(false); }}
-            id="tab_template_engine"
-            className={`px-3 py-1.5 text-xs font-bold transition-all border-b-2 -mb-[6px] flex items-center gap-1.5 ${
-              activeTab === "templates" || isCreatingTemplate
-                ? "border-[#0078D4] text-[#0078D4]"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+            className={`px-3 py-1.5 text-xs font-bold border-b-2 -mb-[6px] flex items-center gap-1.5 transition ${
+              activeTab === "templates" || isCreatingTemplate ? "border-[#0078D4] text-[#0078D4]" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Settings size={13} />
@@ -1069,11 +1267,8 @@ export default function DataIntegrationView({
           </button>
           <button
             onClick={() => { setActiveTab("history"); setIsCreatingTemplate(false); }}
-            id="tab_ingest_history"
-            className={`px-3 py-1.5 text-xs font-bold transition-all border-b-2 -mb-[6px] flex items-center gap-1.5 ${
-              activeTab === "history"
-                ? "border-[#0078D4] text-[#0078D4]"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+            className={`px-3 py-1.5 text-xs font-bold border-b-2 -mb-[6px] flex items-center gap-1.5 transition ${
+              activeTab === "history" ? "border-[#0078D4] text-[#0078D4]" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <History size={13} />
@@ -1081,116 +1276,19 @@ export default function DataIntegrationView({
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-500/10 px-2 py-0.5 rounded text-[10px] text-slate-400 font-semibold border border-slate-700/20">
-          <Sparkles size={11} className="text-[#0078D4]" />
-          <span>NEXUS AI Agent Powered</span>
+        <div className="flex items-center gap-1.5 bg-[#0078D4]/10 px-2 py-0.5 rounded text-[10px] text-[#0078D4] font-semibold border border-[#0078D4]/20">
+          <Sparkles size={11} className="animate-pulse" />
+          <span>NEXUS AI Production Core</span>
         </div>
       </div>
 
-      {/* --- Tab 1: AI EXCEL IMPORT ASSISTANT --- */}
+      {/* --- Tab 1: IMPORT ASSISTANT --- */}
       {activeTab === "upload" && !isCreatingTemplate && (
         <div className="space-y-4">
-          
-          {/* Quick Simulate Upload Area */}
-          <div className={`p-3.5 rounded-md border ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`}>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Simulate Spreadsheet Upload (Try the Scenarios)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
-              <button
-                onClick={() => handleSimulateUpload("overtime_outliers")}
-                id="btn_sim_overtime"
-                className={`p-2.5 rounded border text-left transition-all flex flex-col justify-between ${
-                  fileName === "Mumbai_Timecards_India_July.xlsx"
-                    ? "bg-[#0078D4]/10 border-[#0078D4] text-white"
-                    : (isDark ? "bg-[#1F1F1F] border-[#2D2D2D] hover:border-slate-500 text-slate-300" : "bg-white border-[#EDEBE9] hover:bg-[#F3F2F1] text-slate-700")
-                }`}
-              >
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-500">
-                    <AlertTriangle size={12} />
-                    Overtime File
-                  </div>
-                  <p className="text-[9.5px] text-slate-400 mt-1 leading-normal">
-                    Has Indian Factories Act overtime outliers and missing mandatory field validation.
-                  </p>
-                </div>
-                <span className="text-[9px] text-[#0078D4] font-semibold mt-2.5 flex items-center gap-0.5 self-end">
-                  Simulate Ingest <ChevronRight size={10} />
-                </span>
-              </button>
-
-              <button
-                onClick={() => handleSimulateUpload("sales_currencies")}
-                id="btn_sim_sales"
-                className={`p-2.5 rounded border text-left transition-all flex flex-col justify-between ${
-                  fileName === "Global_Commission_Awards_Q2.csv"
-                    ? "bg-[#0078D4]/10 border-[#0078D4] text-white"
-                    : (isDark ? "bg-[#1F1F1F] border-[#2D2D2D] hover:border-slate-500 text-slate-300" : "bg-white border-[#EDEBE9] hover:bg-[#F3F2F1] text-slate-700")
-                }`}
-              >
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-500">
-                    <Coins size={12} />
-                    Sales Awards
-                  </div>
-                  <p className="text-[9.5px] text-slate-400 mt-1 leading-normal">
-                    Converts USD payments into local SGD rates and flags award cap overruns.
-                  </p>
-                </div>
-                <span className="text-[9px] text-[#0078D4] font-semibold mt-2.5 flex items-center gap-0.5 self-end">
-                  Simulate Ingest <ChevronRight size={10} />
-                </span>
-              </button>
-
-              <button
-                onClick={() => handleSimulateUpload("new_joiner_duplicates")}
-                id="btn_sim_joiners"
-                className={`p-2.5 rounded border text-left transition-all flex flex-col justify-between ${
-                  fileName === "Onboarding_NewJoiner_Data.xlsx"
-                    ? "bg-[#0078D4]/10 border-[#0078D4] text-white"
-                    : (isDark ? "bg-[#1F1F1F] border-[#2D2D2D] hover:border-slate-500 text-slate-300" : "bg-white border-[#EDEBE9] hover:bg-[#F3F2F1] text-slate-700")
-                }`}
-              >
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-sky-500">
-                    <UserPlusIcon size={12} />
-                    New Joiners
-                  </div>
-                  <p className="text-[9.5px] text-slate-400 mt-1 leading-normal">
-                    Identifies duplicate PS Numbers across global regions and email format errors.
-                  </p>
-                </div>
-                <span className="text-[9px] text-[#0078D4] font-semibold mt-2.5 flex items-center gap-0.5 self-end">
-                  Simulate Ingest <ChevronRight size={10} />
-                </span>
-              </button>
-
-              <button
-                onClick={() => handleSimulateUpload("unrecognized_learning")}
-                id="btn_sim_learning"
-                className="p-2.5 rounded border border-purple-500/30 bg-purple-500/5 text-left hover:bg-purple-500/10 transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-purple-400">
-                    <Sparkles size={12} />
-                    Template Learning
-                  </div>
-                  <p className="text-[9.5px] text-slate-400 mt-1 leading-normal">
-                    Upload an unrecognized allowance file to trigger the **AI Adaptive Learning** flow.
-                  </p>
-                </div>
-                <span className="text-[9px] text-purple-400 font-semibold mt-2.5 flex items-center gap-0.5 self-end">
-                  Try Learning <ChevronRight size={10} />
-                </span>
-              </button>
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            
-            {/* Left side upload or mapping results */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 space-y-4">
               
-              {/* Idle Upload State */}
+              {/* Idle File Upload Box */}
               {uploadState === "idle" && !learningSheet && (
                 <div 
                   onDragEnter={handleDrag}
@@ -1198,495 +1296,325 @@ export default function DataIntegrationView({
                   onDragLeave={handleDrag}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  id="file_drop_zone"
-                  className={`border-2 border-dashed rounded-md p-6 text-center flex flex-col items-center justify-center cursor-pointer transition-all h-[340px] ${
-                    dragActive 
-                      ? "border-[#0078D4] bg-[#0078D4]/10" 
-                      : (isDark ? "border-[#2D2D2D] hover:border-slate-500 bg-[#1F1F1F]" : "border-[#EDEBE9] hover:border-slate-400 bg-white")
+                  className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition ${
+                    dragActive ? "border-[#0078D4] bg-[#0078D4]/5" : (isDark ? "border-[#2D2D2D] hover:border-slate-500 bg-[#1F1F1F]" : "border-[#EDEBE9] hover:bg-[#F3F2F1] bg-white")
                   }`}
                 >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        handleFileParsing(e.target.files[0]);
-                      }
-                    }}
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept=".xlsx,.xls,.csv" 
+                    onChange={(e) => { if (e.target.files?.[0]) handleFileParsing(e.target.files[0]); }}
                   />
-                  <div className="w-12 h-12 rounded-full bg-[#0078D4]/10 text-[#0078D4] flex items-center justify-center mb-3">
-                    <Upload size={24} className="animate-bounce" />
-                  </div>
-                  <h4 className="text-xs font-bold text-[#323130] dark:text-white">Drag and drop any Payroll Excel file here</h4>
-                  <p className="text-[11px] text-slate-400 mt-1 max-w-sm">
-                    Predefined templates are auto-detected. New/Unrecognized spreadsheets trigger real-time **AI Template Learning**.
-                  </p>
-                  <span className="mt-4 px-3 py-1.5 bg-[#0078D4] text-white text-[11px] font-semibold rounded hover:bg-[#005A9E] transition">
-                    Browse Files
-                  </span>
-                </div>
-              )}
-
-              {/* Learning Sheet Detection Prompt */}
-              {learningSheet && (
-                <div className={`p-5 rounded-md border flex flex-col justify-between h-[340px] ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`} id="learning_prompt_panel">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-purple-400">
-                      <Sparkles size={16} className="animate-spin-slow" />
-                      <span className="text-xs font-bold uppercase tracking-wider">AI Template Learning Activated</span>
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="p-3 bg-[#0078D4]/10 text-[#0078D4] rounded-full">
+                      <FileSpreadsheet size={32} />
                     </div>
-
-                    <h4 className="text-sm font-bold text-white leading-tight">
-                      NEXUS Detected Unrecognized Payroll Inflow: "{learningSheet.fileName}"
-                    </h4>
-
-                    <p className="text-xs text-slate-400 leading-relaxed">
-                      "Instead of rejecting this sheet, my deep semantic layer has analyzed the file structure. I have detected <strong className="text-purple-300 font-mono">{learningSheet.columns.length} columns</strong> representing a new payroll event template. Would you like to automatically learn and register this template?"
-                    </p>
-
-                    <div className="bg-slate-500/5 rounded p-3 border border-slate-700/10 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Detected Column Vectors:</span>
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {learningSheet.columns.map(col => (
-                          <span key={col} className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                            {col}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-700/10">
-                    <button 
-                      onClick={() => setLearningSheet(null)}
-                      className={`px-3 py-1.5 border rounded text-xs font-bold transition ${
-                        isDark ? "border-[#2D2D2D] hover:bg-[#2D2D2D] text-slate-300" : "border-[#EDEBE9] hover:bg-[#F3F2F1]"
-                      }`}
-                    >
-                      Ignore File
-                    </button>
-                    <button 
-                      onClick={handleSaveLearnedTemplate}
-                      id="btn_learn_and_save"
-                      className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-[#0078D4] text-white text-xs font-bold rounded hover:opacity-95 flex items-center gap-1 shadow"
-                    >
-                      <Sparkles size={12} />
-                      Yes, Learn & Register Template
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Selected File Upload Area */}
-              {uploadState === "uploaded" && detectedTemplate && (
-                <div className={`p-3.5 rounded-md border flex flex-col justify-between h-[340px] ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`} id="file_ready_panel">
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex gap-3">
-                        <div className="p-2.5 bg-[#0078D4]/10 text-[#0078D4] rounded">
-                          <FileSpreadsheet size={24} />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-[#323130] dark:text-white">{fileName}</h4>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Size: 34 KB | Format: Microsoft Excel Spreadsheet</p>
-                        </div>
-                      </div>
-                      <button onClick={() => { setUploadState("idle"); setDetectedTemplate(null); }} className="text-slate-500 hover:text-white">
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    <div className="p-3 bg-[#107C10]/10 border border-[#107C10]/20 rounded-md text-slate-300 space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-                        <CheckCircle size={13} />
-                        AI Auto-Detection Complete
-                      </div>
-                      <p className="text-[11px] leading-relaxed text-slate-400">
-                        NEXUS scanned the header footprint and mapped it to the predefined <strong className="text-white">"{detectedTemplate.name}"</strong> payroll event template. Auto-mapped <strong className="text-white">{detectedTemplate.requiredFields.length} out of {detectedTemplate.requiredFields.length} fields</strong>.
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Configured Verification Engine:</span>
-                      <div className="flex flex-wrap gap-2 pt-0.5">
-                        <span className="px-2 py-0.5 bg-slate-500/10 border border-slate-700/20 rounded text-[9.5px] font-semibold text-slate-300">
-                          Currency: {detectedTemplate.currency}
-                        </span>
-                        <span className="px-2 py-0.5 bg-slate-500/10 border border-slate-700/20 rounded text-[9.5px] font-semibold text-slate-300">
-                          {detectedTemplate.countryValidations.length} Local Country Rules
-                        </span>
-                        <span className="px-2 py-0.5 bg-slate-500/10 border border-slate-700/20 rounded text-[9.5px] font-semibold text-slate-300">
-                          {detectedTemplate.approvalWorkflow.length}-Step Approval Route
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-700/10">
-                    <button 
-                      onClick={() => { setUploadState("idle"); setDetectedTemplate(null); }}
-                      className={`px-3 py-1.5 border rounded text-xs font-bold transition ${
-                        isDark ? "border-[#2D2D2D] hover:bg-[#2D2D2D] text-slate-300" : "border-[#EDEBE9] hover:bg-[#F3F2F1] text-slate-700"
-                      }`}
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={startAiMapping}
-                      id="btn_map_run"
-                      className="px-3.5 py-1.5 bg-gradient-to-r from-[#0078D4] to-[#107C10] text-white text-xs font-bold rounded hover:opacity-95 flex items-center gap-1 shadow-md"
-                    >
-                      <Sparkles size={12} />
-                      Run AI Validation Pass
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Running AI validation loader */}
-              {uploadState === "mapping" && (
-                <div className={`p-6 rounded-md border flex flex-col items-center justify-center text-center h-[340px] ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`} id="mapping_load_panel">
-                  <div className="relative mb-4">
-                    <div className="w-14 h-14 rounded-full border-3 border-t-transparent border-[#0078D4] animate-spin" />
-                    <Sparkles size={18} className="text-amber-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-pulse" />
-                  </div>
-                  <h4 className="text-xs font-bold text-[#323130] dark:text-white uppercase tracking-wider">NEXUS Core AI Ingestion Active</h4>
-                  <p className="text-[11px] text-slate-400 mt-1 max-w-sm leading-relaxed">
-                    Executing dual-schema checks, auditing country-specific rest limitations, translating multi-currency exchange rates, and verifying duplicates in parallel...
-                  </p>
-                  <div className="w-48 bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full mt-4 overflow-hidden">
-                    <div className="bg-[#107C10] h-full rounded-full animate-[progress_1.8s_ease-in-out_infinite]" style={{ width: "80%" }} />
-                  </div>
-                </div>
-              )}
-
-              {/* Review & Interactive Edit Panel */}
-              {uploadState === "review" && detectedTemplate && (
-                <div className={`p-3.5 rounded-md border flex flex-col h-auto ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`} id="review_mapping_records_panel">
-                  
-                  {/* Header info */}
-                  <div className="flex items-center justify-between border-b pb-2 border-slate-700/15">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-400 uppercase">AI Data Import Review Queue</h4>
-                      <p className="text-[10px] text-slate-500">Template Target: {detectedTemplate.name} (v{detectedTemplate.version})</p>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px]">
-                      <span className="px-2 py-0.5 bg-[#107C10]/10 text-[#107C10] border border-[#107C10]/20 font-bold rounded">
-                        {parsedRows.filter(r => r.isValid).length} Valid Rows
-                      </span>
-                      {parsedRows.filter(r => !r.isValid).length > 0 && (
-                        <span className="px-2 py-0.5 bg-[#A80000]/10 text-[#F1707B] border border-[#A80000]/20 font-bold rounded">
-                          {parsedRows.filter(r => !r.isValid).length} Blocked Rows
-                        </span>
-                      )}
+                      <h4 className="text-sm font-bold text-slate-200">Upload active corporate payroll dataset</h4>
+                      <p className="text-[11px] text-slate-400 mt-1">Drag and drop file here, or click to browse local directories.</p>
+                      <p className="text-[10px] text-slate-500 italic mt-2">Supports official .xlsx, .xls, and .csv ledger formats.</p>
                     </div>
                   </div>
+                </div>
+              )}
 
-                  {/* Schema column auto-mappings review card */}
-                  <div className="my-2.5 p-2 bg-[#2D2D2D]/40 border border-slate-700/10 rounded">
-                    <details className="outline-none cursor-pointer">
-                      <summary className="text-[10.5px] font-bold text-slate-400 flex items-center justify-between select-none">
-                        <span>🔍 View Intelligent Header Field Mappings ({columnMappings.length} Columns)</span>
-                        <span className="text-[9.5px] text-[#107C10] font-bold bg-[#107C10]/10 px-1.5 py-0.2 rounded">100% matched</span>
-                      </summary>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pt-2 cursor-default">
-                        {columnMappings.map(m => (
-                          <div key={m.sourceHeader} className="p-1.5 bg-slate-500/5 rounded border border-slate-700/10 flex items-center justify-between text-[10px]">
-                            <div>
-                              <span className="text-slate-500 font-mono block">{m.sourceHeader}</span>
-                              <span className="text-white font-bold flex items-center gap-0.5"><ArrowRight size={8} /> {m.targetField}</span>
-                            </div>
-                            <span className="text-[9px] text-[#107C10] font-mono">{m.confidence}%</span>
-                          </div>
-                        ))}
+              {/* Uploaded File matched with schema header mapping preview */}
+              {uploadState === "uploaded" && detectedTemplate && (
+                <div className={`p-4 rounded-md border space-y-4 ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}>
+                  <div className="flex items-center justify-between border-b border-slate-700/10 pb-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="text-[#0078D4]" size={18} />
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-200">{fileName}</h4>
+                        <p className="text-[10px] text-slate-400">Successfully matched against schema: <span className="text-[#0078D4] font-bold">{detectedTemplate.name}</span></p>
                       </div>
-                    </details>
+                    </div>
+                    <button onClick={() => { setUploadState("idle"); setFileName(""); }} className="p-1 hover:bg-slate-700/20 rounded text-slate-400 hover:text-white">
+                      <X size={14} />
+                    </button>
                   </div>
 
-                  {/* Parsing Data Grid Row by Row */}
-                  <div className="overflow-x-auto my-1.5 border border-slate-700/10 rounded-md">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-500/5 text-slate-400 border-b border-slate-700/10">
-                          {detectedTemplate.requiredFields.map(f => (
-                            <th key={f.key} className="py-2 px-3 font-semibold">{f.label}</th>
-                          ))}
-                          <th className="py-2 px-3 font-semibold">AI Validation / Outliers</th>
-                          <th className="py-2 px-3 text-right font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {parsedRows.map((row) => (
-                          <tr 
-                            key={row.id} 
-                            className={`border-b border-slate-700/5 transition-colors ${
-                              !row.isValid 
-                                ? "bg-[#A80000]/5 hover:bg-[#A80000]/10" 
-                                : (row.warnings.length > 0 ? "bg-amber-500/5 hover:bg-amber-500/10" : "hover:bg-slate-500/5")
-                            }`}
-                          >
-                            {/* Render data values dynamically based on template requirements */}
-                            {detectedTemplate.requiredFields.map(f => (
-                              <td key={f.key} className="py-2 px-3 font-medium">
-                                {f.type === "number" && row.data[f.key] !== undefined ? (
-                                  <span className="font-mono">
-                                    {detectedTemplate.currency === "USD" ? "$" : (detectedTemplate.currency === "EUR" ? "€" : "")}
-                                    {Number(row.data[f.key]).toLocaleString()}
-                                  </span>
-                                ) : (
-                                  String(row.data[f.key] || "—")
-                                )}
-                              </td>
-                            ))}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10.5px] font-bold text-slate-400 uppercase">Interactive Schema Mappings ({columnMappings.length})</span>
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.2 rounded font-mono font-bold">95%+ Match Verified</span>
+                    </div>
 
-                            {/* Render validation logs */}
-                            <td className="py-2 px-3 max-w-[280px]">
-                              {row.isValid && row.warnings.length === 0 && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#107C10]">
-                                  <Check size={11} /> Pass
-                                </span>
-                              )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1">
+                      {columnMappings.map((m, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-slate-500/10 p-2 rounded border border-slate-700/10 text-xs">
+                          <span className="font-mono text-slate-300 truncate max-w-[120px]" title={m.sourceHeader}>{m.sourceHeader}</span>
+                          <ArrowRight size={12} className="text-slate-500 shrink-0 mx-1" />
+                          <select
+                            value={m.targetField}
+                            onChange={(e) => {
+                              const newTarget = e.target.value;
+                              const updatedMappings = [...columnMappings];
+                              updatedMappings[idx] = { ...m, targetField: newTarget };
+                              setColumnMappings(updatedMappings);
                               
-                              {/* Warnings/Outliers */}
-                              {row.warnings.map((w, idx) => (
-                                <div key={idx} className="text-[10px] text-amber-400 font-medium flex items-start gap-1 mb-0.5 leading-tight">
-                                  <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />
-                                  <span>{w}</span>
-                                </div>
-                              ))}
+                              if (uploadedRawRows.length > 0 && detectedTemplate) {
+                                processRowsWithMappings(uploadedRawRows, updatedMappings, detectedTemplate);
+                              }
+                            }}
+                            className="bg-[#1F1F1F] text-white border border-[#2D2D2D] rounded text-[11px] p-1 w-[160px] focus:outline-none"
+                          >
+                            <option value="">-- Ignore Column --</option>
+                            {detectedTemplate.requiredFields.map(f => (
+                              <option key={f.key} value={f.key}>{f.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
 
-                              {/* Hard Errors */}
-                              {row.errors.map((e, idx) => (
-                                <div key={idx} className="text-[10px] text-[#F1707B] font-bold flex items-start gap-1 leading-tight">
-                                  <AlertCircle size={10} className="mt-0.5 flex-shrink-0" />
-                                  <span>{e}</span>
-                                </div>
-                              ))}
-                            </td>
-
-                            <td className="py-2 px-3 text-right">
-                              <button
-                                onClick={() => handleStartEditRow(row)}
-                                id={`btn_edit_row_${row.id}`}
-                                className="p-1 hover:bg-slate-500/20 text-slate-300 rounded transition"
-                                title="Edit Row Values"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <button 
+                      onClick={handleRunAiValidation}
+                      className="w-full py-2 bg-[#0078D4] hover:bg-[#005A9E] text-white text-xs font-bold rounded flex items-center justify-center gap-1.5 shadow"
+                    >
+                      <Sparkles size={14} />
+                      Execute AI Multi-Step Validation Pass
+                    </button>
                   </div>
+                </div>
+              )}
 
-                  {/* Interactive editing Form overlay */}
-                  {editingRow && (
-                    <div className="my-3 p-3.5 border border-slate-700/20 bg-slate-500/10 rounded-md space-y-3" id="inline_row_editor">
-                      <div className="flex items-center justify-between border-b pb-1 border-slate-700/10">
-                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <Edit2 size={13} className="text-[#0078D4]" />
-                          Edit Row Variables (Real-time Validation Checks)
-                        </span>
-                        <button onClick={() => setEditingRow(null)} className="text-slate-400 hover:text-white">
-                          <X size={14} />
-                        </button>
-                      </div>
+              {/* Validation run loader */}
+              {uploadState === "mapping" && (
+                <div className="p-12 text-center flex flex-col items-center justify-center gap-4">
+                  <RefreshCw size={32} className="animate-spin text-[#0078D4]" />
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-200">Executing Sovereign AI Audits...</h4>
+                    <p className="text-xs text-slate-400 mt-1">Cross-referencing PS Numbers against active directories and checking regional limit compliance.</p>
+                  </div>
+                </div>
+              )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {detectedTemplate.requiredFields.map(f => (
-                          <div key={f.key} className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400">
-                              {f.label} {f.isMandatory && <span className="text-[#F1707B]">*</span>}
-                            </label>
-                            <input
-                              type={f.type === "number" ? "number" : (f.type === "date" ? "date" : "text")}
-                              value={editingRow.data[f.key] || ""}
-                              onChange={(e) => {
-                                const val = f.type === "number" ? Number(e.target.value) : e.target.value;
-                                setEditingRow(prev => {
-                                  if (!prev) return null;
-                                  return {
-                                    ...prev,
-                                    data: { ...prev.data, [f.key]: val }
-                                  };
-                                });
-                              }}
-                              className={`w-full text-xs p-1.5 rounded border outline-none font-semibold ${
-                                isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white focus:border-[#0078D4]" : "bg-white border-[#EDEBE9] focus:border-[#0078D4]"
-                              }`}
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center justify-end gap-2 pt-2">
-                        <button
-                          onClick={() => setEditingRow(null)}
-                          className="px-2.5 py-1 border border-slate-700/20 rounded text-[11px] text-slate-300 font-bold hover:bg-slate-700/10"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleSaveEditedRow}
-                          id="btn_save_inline_edit"
-                          className="px-3 py-1 bg-[#0078D4] text-white rounded text-[11px] font-bold hover:bg-[#005A9E] flex items-center gap-1"
-                        >
-                          <Check size={12} /> Save & Revalidate
-                        </button>
+              {/* Review Queue Tabbed records list */}
+              {uploadState === "review" && detectedTemplate && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-slate-500/10 p-3 rounded border border-slate-700/5 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Clock size={16} className="text-amber-500" />
+                      <div>
+                        <h4 className="text-xs font-bold text-white uppercase">Interactive Validation Review Queue</h4>
+                        <p className="text-[10.5px] text-slate-400">Errors must be resolved inline before committing transaction batches into active directories.</p>
                       </div>
                     </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-700/15">
-                    <span className="text-[10px] text-slate-400 max-w-md leading-normal">
-                      Note: Skipped/Invalid records containing hard validation flags will not be imported into the ledger.
-                    </span>
                     <div className="flex gap-2">
                       <button 
-                        onClick={() => { setUploadState("idle"); setDetectedTemplate(null); }}
-                        className={`px-3 py-1.5 border rounded text-xs font-bold transition ${
-                          isDark ? "border-[#2D2D2D] hover:bg-[#2D2D2D]" : "border-[#EDEBE9]"
-                        }`}
+                        onClick={() => setUploadState("uploaded")} 
+                        className="px-2.5 py-1 text-[10.5px] font-bold border border-slate-700 text-slate-300 hover:bg-slate-700/50 rounded"
                       >
-                        Reset Ingest
+                        Reset Match
                       </button>
                       <button 
-                        onClick={handleCommitImport}
-                        id="btn_confirm_valid_only"
-                        className="px-3.5 py-1.5 bg-[#107C10] hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-md flex items-center gap-1"
+                        onClick={handleCommitImport} 
+                        className="px-3 py-1 bg-[#107C10] hover:bg-emerald-700 text-white text-[10.5px] font-bold rounded flex items-center gap-1 shadow"
                       >
-                        <ShieldCheck size={13} />
-                        Import Valid Records Only ({parsedRows.filter(r => r.isValid).length} Rows)
+                        <CheckCircle size={12} />
+                        Import Valid Records Only
                       </button>
                     </div>
+                  </div>
+
+                  <div className="border border-slate-700/10 rounded-md overflow-hidden bg-slate-500/5">
+                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-700/15 bg-slate-500/10 text-slate-400 font-bold">
+                            <th className="py-2 px-3">Personnel ID</th>
+                            <th className="py-2 px-3">Employee Name</th>
+                             {detectedTemplate.requiredFields.filter(f => !["employeeid", "employeename", "country"].includes(f.key.toLowerCase())).map(f => (
+                               <th key={f.key} className="py-2 px-3">{f.label}</th>
+                             ))}
+                             <th className="py-2 px-3">Verification Details</th>
+                             <th className="py-2 px-3 text-right">Actions</th>
+                           </tr>
+                         </thead>
+                         <tbody>
+                           {parsedRows.map(row => (
+                             <tr key={row.id} className={`border-b border-slate-700/5 ${row.isValid ? "hover:bg-slate-500/5" : "bg-red-500/5"}`}>
+                               <td className="py-2 px-3 font-mono text-slate-300">{row.data["employeeId"] || row.data["employeeid"] || <span className="text-red-400 italic">Empty</span>}</td>
+                               <td className="py-2 px-3 text-white font-semibold">{row.data["employeeName"] || row.data["employeename"] || <span className="text-red-400 italic">Empty</span>}</td>
+                               {detectedTemplate.requiredFields.filter(f => !["employeeid", "employeename", "country"].includes(f.key.toLowerCase())).map(f => (
+                                 <td key={f.key} className="py-2 px-3 font-semibold text-slate-300">{row.data[f.key]}</td>
+                               ))}
+                              <td className="py-2 px-3 space-y-1">
+                                {row.errors.map((e, idx) => (
+                                  <div key={idx} className="flex items-center gap-1 text-red-400 text-[10px] leading-normal font-medium">
+                                    <ShieldAlert size={10} className="shrink-0" />
+                                    <span>{e}</span>
+                                  </div>
+                                ))}
+                                {row.warnings.map((w, idx) => (
+                                  <div key={idx} className="flex items-center gap-1 text-amber-500 text-[10px] leading-normal font-medium">
+                                    <AlertTriangle size={10} className="shrink-0" />
+                                    <span>{w}</span>
+                                  </div>
+                                ))}
+                                {row.isValid && row.warnings.length === 0 && (
+                                  <div className="flex items-center gap-1 text-[#107C10] text-[10px] font-bold">
+                                    <Check size={11} /> Passed Verification
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <button 
+                                  onClick={() => setEditingRow(row)}
+                                  className="p-1 hover:bg-[#0078D4]/10 text-[#0078D4] hover:text-[#005A9E] rounded"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Unknown template detected learning flow triggers */}
+              {learningSheet && (
+                <div className="p-5 bg-purple-500/5 border border-purple-500/30 rounded-lg space-y-4">
+                  <div className="flex gap-3 items-start">
+                    <div className="p-3 bg-purple-500/10 text-purple-400 rounded-full">
+                      <Sparkles size={24} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Unknown Template Structure Discovered</h4>
+                      <p className="text-xs text-slate-400 mt-1">The headers inside uploaded sheet <span className="font-bold text-purple-300">"{fileName}"</span> do not match any recognized payroll schema registry. Run AI Adaptive Learning on this dataset structure?</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-500/10 p-3 rounded text-xs border border-slate-700/10 space-y-2">
+                    <span className="font-bold text-slate-400 text-[10px] uppercase">Discovered Columns ({learningSheet.columns.length})</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {learningSheet.columns.map((col, idx) => (
+                        <span key={idx} className="bg-slate-500/20 border border-slate-700/20 rounded px-2 py-0.5 text-[10.5px] font-mono text-purple-300 font-semibold">{col}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2.5">
+                    <button onClick={() => { setLearningSheet(null); setFileName(""); }} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white">Ignore</button>
+                    <button 
+                      onClick={handleSaveLearnedTemplate}
+                      className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded shadow-md flex items-center gap-1"
+                    >
+                      <Sparkles size={12} />
+                      Learn & Register Template Schema
+                    </button>
                   </div>
                 </div>
               )}
 
             </div>
 
-            {/* Right side instruction checklist */}
+            {/* Right Side Info Box */}
             <div className="space-y-4">
-              
-              {/* Intelligent policies card */}
-              <div className={`p-3.5 rounded-md border shadow-sm ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}>
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1">
-                  <Sparkles size={11} className="text-[#0078D4]" />
-                  AI Ingest Assistant Checklist
+              <div className={`p-4 rounded-lg border ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}>
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-700/10 pb-2">
+                  <Database size={13} className="text-[#0078D4]" />
+                  Active System Registries
                 </h4>
-
-                <div className="space-y-2 text-[11px] text-slate-400">
-                  <div className="flex gap-2 items-start">
-                    <span className="w-5 h-5 rounded-full bg-[#107C10]/15 text-[#107C10] flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">1</span>
-                    <div>
-                      <strong className="text-white">Continuous Auto-Detection</strong>
-                      <p className="text-[10px] text-slate-500 leading-normal mt-0.5">NEXUS identifies the template (e.g. Overtime or Sales) based on header schemas instantly.</p>
-                    </div>
+                <div className="pt-2 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Master templates:</span>
+                    <span className="font-bold text-white">{templates.length} Active</span>
                   </div>
-                  <div className="flex gap-2 items-start">
-                    <span className="w-5 h-5 rounded-full bg-[#107C10]/15 text-[#107C10] flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">2</span>
-                    <div>
-                      <strong className="text-white">Country Rules Verification</strong>
-                      <p className="text-[10px] text-slate-500 leading-normal mt-0.5">Row variables are vetted for localized labor policies (like German 10h working time limits).</p>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Master employees directory:</span>
+                    <span className="font-bold text-white">{employeesList.length} Records</span>
                   </div>
-                  <div className="flex gap-2 items-start">
-                    <span className="w-5 h-5 rounded-full bg-[#107C10]/15 text-[#107C10] flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">3</span>
-                    <div>
-                      <strong className="text-white">Currency & Outlier Audits</strong>
-                      <p className="text-[10px] text-slate-500 leading-normal mt-0.5">Detects abnormal amounts and handles conversions from USD to local currencies dynamically.</p>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Ingested runs this period:</span>
+                    <span className="font-bold text-[#107C10]">{historyItems.length} runs</span>
                   </div>
                 </div>
               </div>
 
-              {/* RAG Rules panel */}
-              <div className={`p-3.5 rounded-md border flex flex-col justify-between ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}>
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
-                  <Database size={12} className="text-amber-500" />
-                  Sovereign HR Integrations
-                </h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
-                  Active templates are mapped directly against localized HRMS. For dynamic endpoints or SuccessFactors SFTP folders, register credential tokens inside the **Admin Console**.
-                </p>
+              <div className="p-4 bg-slate-500/5 rounded-lg border border-slate-700/10 space-y-2 text-xs text-slate-400">
+                <span className="font-bold text-white uppercase text-[10px] block">Ingestion Integrity Guidelines</span>
+                <p className="leading-relaxed">Every transaction runs through automatic duplicate validation checks, currency converters, and localized labor rules validations to prevent compliance errors.</p>
               </div>
-
             </div>
-
           </div>
         </div>
       )}
 
-      {/* --- Tab 2: DYNAMIC TEMPLATE ENGINE CONSOLE --- */}
+      {/* --- Tab 2: TEMPLATE ENGINE VIEW (Phase 8) --- */}
       {(activeTab === "templates" || isCreatingTemplate) && (
         <div className="space-y-4">
-          
-          {/* Main List and Form Switcher */}
           {!isCreatingTemplate ? (
-            <div className={`p-3.5 rounded-md border ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`} id="templates_list_panel">
-              <div className="flex items-center justify-between border-b pb-2 border-slate-700/10">
+            <div className={`p-4 rounded-md border ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}>
+              <div className="flex items-center justify-between border-b border-slate-700/10 pb-3 flex-wrap gap-2">
                 <div>
-                  <h3 className="text-xs font-bold text-white uppercase">Sovereign Payroll Input Templates</h3>
-                  <p className="text-[10.5px] text-slate-400">Zero Code updates are populated to active ingestion channels instantly.</p>
+                  <h3 className="text-sm font-bold text-white uppercase">Sovereign Template Schema Registries</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Define structured headers, localized rules compliance triggers, and multi-stage workflows.</p>
                 </div>
-                <button
+                <button 
                   onClick={() => handleOpenCreateTemplate(null)}
-                  id="btn_create_new_template"
-                  className="px-3 py-1.5 bg-[#0078D4] hover:bg-[#005A9E] text-white rounded text-xs font-bold flex items-center gap-1 shadow"
+                  className="px-3.5 py-1.5 bg-[#0078D4] hover:bg-[#005A9E] text-white text-xs font-bold rounded flex items-center gap-1 shadow"
                 >
                   <Plus size={13} />
-                  + Create Custom Template
+                  Construct Schema Template
                 </button>
               </div>
 
               {isLoadingTemplates ? (
                 <div className="py-12 text-center text-slate-400 flex flex-col items-center gap-2">
                   <RefreshCw size={24} className="animate-spin text-[#0078D4]" />
-                  <span>Loading Sovereign schemas from Firestore...</span>
+                  <span>Loading templates from 'template_registry' collection...</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-4">
                   {templates.map(tmpl => (
-                    <div key={tmpl.id} className="p-3.5 rounded border border-slate-700/10 bg-slate-500/5 flex flex-col justify-between h-[180px] hover:border-[#0078D4]/50 transition-all">
+                    <div key={tmpl.id} className="p-3.5 rounded bg-slate-500/5 border border-slate-700/10 flex flex-col justify-between h-[180px] hover:border-[#0078D4]/40 transition-all">
                       <div>
                         <div className="flex items-start justify-between">
                           <div>
-                            <span className="text-[9px] font-bold font-mono text-[#0078D4] uppercase">v{tmpl.version} SCHEMA</span>
+                            <span className="text-[9px] font-bold font-mono text-[#0078D4] uppercase">v{tmpl.version || 1} Schema Registry</span>
                             <h4 className="text-xs font-bold text-white mt-0.5">{tmpl.name}</h4>
                           </div>
-                          {tmpl.isSystem ? (
-                            <span className="text-[8px] bg-slate-500/15 text-slate-400 px-1.5 py-0.2 rounded font-semibold border border-slate-700/20">System</span>
-                          ) : (
-                            <span className="text-[8px] bg-purple-500/10 text-purple-300 px-1.5 py-0.2 rounded font-semibold border border-purple-500/20">Learned</span>
-                          )}
+                          <div className="flex gap-1.5">
+                            <span className={`text-[8px] px-1.5 py-0.2 rounded font-semibold border ${
+                              tmpl.status === "Inactive" ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
+                            }`}>{tmpl.status || "Active"}</span>
+                            {tmpl.isSystem ? (
+                              <span className="text-[8px] bg-slate-500/15 text-slate-400 px-1.5 py-0.2 rounded font-semibold border border-slate-700/20">System</span>
+                            ) : (
+                              <span className="text-[8px] bg-purple-500/10 text-purple-300 px-1.5 py-0.2 rounded font-semibold border border-purple-500/20">Learned</span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-2 leading-relaxed line-clamp-2">{tmpl.description}</p>
                       </div>
 
-                      <div className="pt-2.5 border-t border-slate-700/5 flex items-center justify-between">
-                        <span className="text-[9.5px] text-slate-500 font-medium">
-                          {tmpl.requiredFields.length} Defined Fields | {tmpl.countryValidations.length} Local Limits
+                      <div className="pt-2 border-t border-slate-700/10 flex items-center justify-between flex-wrap gap-1">
+                        <span className="text-[9.5px] text-slate-500 font-medium font-mono">
+                          {tmpl.requiredFields?.length || 0} Fields | {tmpl.countryValidations?.length || 0} Country Rules
                         </span>
-                        
+
                         <div className="flex gap-1.5">
-                          <button
-                            onClick={() => handleOpenCreateTemplate(tmpl)}
-                            id={`btn_edit_tmpl_${tmpl.id}`}
-                            className="p-1 hover:bg-slate-500/10 rounded text-slate-300 transition"
-                            title="Edit Schema"
-                          >
+                          <button onClick={() => exportTemplateAsJson(tmpl)} className="p-1 hover:bg-slate-700/20 rounded text-slate-400 hover:text-slate-200" title="Export Schema JSON">
+                            <Download size={11} />
+                          </button>
+                          <button onClick={() => handleCloneTemplate(tmpl)} className="p-1 hover:bg-slate-700/20 rounded text-slate-400 hover:text-slate-200" title="Clone Template">
+                            <Copy size={11} />
+                          </button>
+                          <button onClick={() => handleToggleStatus(tmpl)} className="p-1 hover:bg-slate-700/20 rounded text-slate-400 hover:text-slate-200" title="Toggle Active Status">
+                            {tmpl.status === "Inactive" ? <ToggleLeft size={13} className="text-slate-500" /> : <ToggleRight size={13} className="text-emerald-400" />}
+                          </button>
+                          <button onClick={() => handleOpenCreateTemplate(tmpl)} className="p-1 hover:bg-[#0078D4]/10 rounded text-[#0078D4]" title="Edit Schema">
                             <Edit2 size={11} />
                           </button>
                           {!tmpl.isSystem && (
-                            <button
-                              onClick={() => handleDeleteTemplate(tmpl.id, tmpl.name)}
-                              id={`btn_delete_tmpl_${tmpl.id}`}
-                              className="p-1 hover:bg-[#A80000]/10 rounded text-slate-400 hover:text-red-400 transition"
-                              title="Delete Schema"
-                            >
+                            <button onClick={() => handleDeleteTemplate(tmpl.id, tmpl.name)} className="p-1 hover:bg-red-500/10 rounded text-red-400" title="Delete Schema">
                               <Trash2 size={11} />
                             </button>
                           )}
@@ -1698,380 +1626,367 @@ export default function DataIntegrationView({
               )}
             </div>
           ) : (
-            
-            /* Interactive Template Builder / Form Form */
-            <div className={`p-4 rounded-md border space-y-4 ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`} id="template_builder_form">
-              <div className="flex items-center justify-between border-b pb-2 border-slate-700/10">
+            /* Schema Builder Form */
+            <div className={`p-4 rounded-md border space-y-4 ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`}>
+              <div className="flex items-center justify-between border-b border-slate-700/10 pb-2">
                 <div>
-                  <h3 className="text-xs font-bold text-white uppercase">
-                    {editingTemplate ? `Modify Dynamic Template: ${editingTemplate.name}` : "Construct Custom Payroll Input Schema"}
-                  </h3>
-                  <p className="text-[10.5px] text-slate-400">Specify field attributes, localized limit conditions, and approval routing hierarchies.</p>
+                  <h3 className="text-xs font-bold text-white uppercase">{editingTemplate ? `Modify Schema Registry: ${editingTemplate.name}` : "Construct Custom Payroll Schema"}</h3>
+                  <p className="text-[10px] text-slate-400">Configure parameters, regulatory limits, and workflow routes for future file classifications.</p>
                 </div>
-                <button
-                  onClick={() => setIsCreatingTemplate(false)}
-                  className="p-1 text-slate-400 hover:text-white"
-                >
-                  <X size={16} />
-                </button>
+                <button onClick={() => setIsCreatingTemplate(false)} className="p-1 text-slate-400 hover:text-white"><X size={16} /></button>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                
-                {/* Form Inputs left */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs text-slate-300">
                 <div className="lg:col-span-2 space-y-4">
-                  
-                  {/* Basic meta */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Payroll Event Template Name</label>
-                      <input
-                        type="text"
-                        value={formTemplateName}
+                      <label className="text-[9px] font-bold text-slate-400 uppercase block">Schema Template Name</label>
+                      <input 
+                        type="text" 
+                        value={formTemplateName} 
                         onChange={(e) => setFormTemplateName(e.target.value)}
-                        placeholder="e.g. Remote Work Allowance"
-                        className={`w-full text-xs p-1.5 rounded border outline-none font-semibold ${
-                          isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white focus:border-[#0078D4]" : "bg-white border-[#EDEBE9] focus:border-[#0078D4]"
-                        }`}
+                        placeholder="e.g. Remote Allowance" 
+                        className="w-full text-xs p-1.5 bg-[#1F1F1F] border border-[#2D2D2D] rounded text-white"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Base Currency Handling</label>
-                      <select
-                        value={formCurrency}
+                      <label className="text-[9px] font-bold text-slate-400 uppercase block">Currency Handling</label>
+                      <select 
+                        value={formCurrency} 
                         onChange={(e) => setFormCurrency(e.target.value)}
-                        className={`w-full text-xs p-1.5 rounded border outline-none font-semibold ${
-                          isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white" : "bg-white border-[#EDEBE9]"
-                        }`}
+                        className="w-full text-xs p-1.5 bg-[#1F1F1F] border border-[#2D2D2D] rounded text-white font-semibold"
                       >
                         <option value="USD">USD ($) - International Base</option>
-                        <option value="EUR">EUR (€) - European Zone</option>
-                        <option value="SGD">SGD (S$) - Singapore SGD</option>
-                        <option value="JPY">JPY (¥) - Japan JPY</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="SGD">SGD (S$)</option>
+                        <option value="INR">INR (₹)</option>
                         <option value="Global">Global Entity-Specific Conversion</option>
                       </select>
                     </div>
                     <div className="md:col-span-2 space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Event Description</label>
-                      <input
-                        type="text"
-                        value={formTemplateDesc}
+                      <label className="text-[9px] font-bold text-slate-400 uppercase block">Description</label>
+                      <input 
+                        type="text" 
+                        value={formTemplateDesc} 
                         onChange={(e) => setFormTemplateDesc(e.target.value)}
-                        placeholder="Description for HR operations context..."
-                        className={`w-full text-xs p-1.5 rounded border outline-none font-semibold ${
-                          isDark ? "bg-[#1F1F1F] border-[#2D2D2D] text-white focus:border-[#0078D4]" : "bg-white border-[#EDEBE9] focus:border-[#0078D4]"
-                        }`}
+                        placeholder="Contextual operations details..." 
+                        className="w-full text-xs p-1.5 bg-[#1F1F1F] border border-[#2D2D2D] rounded text-white"
                       />
                     </div>
                   </div>
 
-                  {/* Schema Fields Builder */}
+                  {/* Fields lists */}
                   <div className="p-3.5 bg-slate-500/5 rounded border border-slate-700/10 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10.5px] font-bold text-slate-400 uppercase">1. Schema Attribute Mapping Specifications</span>
-                      <button
-                        onClick={handleAddField}
-                        className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded font-bold hover:bg-[#0078D4]/20 transition flex items-center gap-0.5"
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-slate-400 uppercase text-[10px]">1. Mapped Columns Schema Specifications</span>
+                      <button 
+                        onClick={() => setFormTemplateFields([...formTemplateFields, { key: `field_${Date.now().toString().slice(-4)}_${Math.floor(Math.random() * 1000)}`, label: "Custom Field", type: "string", isMandatory: false }])}
+                        className="text-[10px] text-[#0078D4] font-bold hover:underline"
                       >
-                        <Plus size={11} /> Add Attribute Field
+                        + Add Attribute Field
                       </button>
                     </div>
-
-                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto">
                       {formTemplateFields.map((field, idx) => (
                         <div key={idx} className="flex gap-2 items-center bg-slate-500/10 p-2 rounded border border-slate-700/10">
-                          <input
-                            type="text"
-                            value={field.label}
-                            onChange={(e) => handleFieldChange(idx, "label", e.target.value)}
-                            placeholder="Attribute Label"
-                            className="w-1/3 text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white font-semibold"
-                          />
-                          <select
-                            value={field.type}
-                            onChange={(e) => handleFieldChange(idx, "type", e.target.value)}
-                            className="w-1/4 text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
-                          >
-                            <option value="string">Text String</option>
-                            <option value="number">Decimal/No.</option>
-                            <option value="boolean">Boolean Check</option>
-                            <option value="date">Date Calendar</option>
-                          </select>
-                          <label className="flex items-center gap-1 text-[10px] text-slate-300 select-none">
-                            <input
-                              type="checkbox"
-                              checked={field.isMandatory}
-                              onChange={(e) => handleFieldChange(idx, "isMandatory", e.target.checked)}
-                              className="accent-[#0078D4]"
-                            />
-                            Mandatory
-                          </label>
-                          
-                          <button
-                            onClick={() => handleRemoveField(idx)}
-                            className="ml-auto p-1 text-slate-500 hover:text-[#F1707B] rounded"
-                            disabled={["employeeId", "employeeName", "country"].includes(field.key)}
-                            title={["employeeId", "employeeName", "country"].includes(field.key) ? "Cannot remove core parameters" : "Remove Field"}
-                          >
+                           <input 
+                             type="text" 
+                             value={field.label} 
+                             onChange={(e) => {
+                               const updated = [...formTemplateFields];
+                               updated[idx].label = e.target.value;
+                               const currentKey = field.key.toLowerCase();
+                               if (!["employeeid", "employeename", "country"].includes(currentKey)) {
+                                 updated[idx].key = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "");
+                               }
+                               setFormTemplateFields(updated);
+                             }}
+                             placeholder="Header Label" 
+                             className="w-1/3 text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
+                           />
+                           <select 
+                             value={field.type} 
+                             onChange={(e) => {
+                               const updated = [...formTemplateFields];
+                               updated[idx].type = e.target.value as any;
+                               setFormTemplateFields(updated);
+                             }}
+                             className="text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
+                           >
+                             <option value="string">Text String</option>
+                             <option value="number">Numeric/Decimal</option>
+                             <option value="date">Date Calendar</option>
+                           </select>
+                           <label className="flex items-center gap-1 text-[10px] text-slate-400 select-none">
+                             <input 
+                               type="checkbox" 
+                               checked={field.isMandatory} 
+                               onChange={(e) => {
+                                 const updated = [...formTemplateFields];
+                                 updated[idx].isMandatory = e.target.checked;
+                                 setFormTemplateFields(updated);
+                               }}
+                               className="accent-[#0078D4]"
+                             />
+                             Mandatory
+                           </label>
+                           <button 
+                             onClick={() => setFormTemplateFields(formTemplateFields.filter((_, i) => i !== idx))} 
+                             className="ml-auto text-slate-500 hover:text-red-400"
+                             disabled={["employeeid", "employeename", "country"].includes(field.key.toLowerCase())}
+                           >
                             <Trash2 size={12} />
                           </button>
                         </div>
                       ))}
                     </div>
                   </div>
-
-                  {/* Sovereign Country Rules */}
-                  <div className="p-3.5 bg-slate-500/5 rounded border border-slate-700/10 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10.5px] font-bold text-slate-400 uppercase">2. Country Specific Regulatory Limits</span>
-                      <button
-                        onClick={handleAddCountryValidation}
-                        className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded font-bold hover:bg-[#0078D4]/20 transition flex items-center gap-0.5"
-                      >
-                        <Plus size={11} /> Add Regulatory Limit
-                      </button>
-                    </div>
-
-                    {formCountryVal.length === 0 ? (
-                      <p className="text-[10px] text-slate-500 italic">No custom country-specific validation rules set. Template defaults apply globally.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {formCountryVal.map((cRule, idx) => (
-                          <div key={idx} className="flex gap-2 items-center bg-slate-500/10 p-2 rounded border border-slate-700/10 flex-wrap">
-                            <select
-                              value={cRule.country}
-                              onChange={(e) => handleCountryValChange(idx, "country", e.target.value)}
-                              className="text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
-                            >
-                              <option value="India">India</option>
-                              <option value="Global">Global/Shared</option>
-                            </select>
-
-                            <select
-                              value={cRule.field}
-                              onChange={(e) => handleCountryValChange(idx, "field", e.target.value)}
-                              className="text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
-                            >
-                              {formTemplateFields.map(f => (
-                                <option key={f.key} value={f.key}>{f.label}</option>
-                              ))}
-                            </select>
-
-                            <select
-                              value={cRule.condition}
-                              onChange={(e) => handleCountryValChange(idx, "condition", e.target.value)}
-                              className="text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
-                            >
-                              <option value="max_hours">Daily Max Hours</option>
-                              <option value="max_amount">Max Payout Cap</option>
-                              <option value="min_amount">Minimum Wage Floor</option>
-                              <option value="format_email">Email Validation</option>
-                            </select>
-
-                            <input
-                              type="text"
-                              value={cRule.value}
-                              onChange={(e) => handleCountryValChange(idx, "value", e.target.value)}
-                              placeholder="Limit Value"
-                              className="w-16 text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white text-center font-mono font-bold"
-                            />
-
-                            <input
-                              type="text"
-                              value={cRule.errorMessage}
-                              onChange={(e) => handleCountryValChange(idx, "errorMessage", e.target.value)}
-                              placeholder="Filing Compliance Error Message"
-                              className="flex-1 text-xs p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white"
-                            />
-
-                            <button
-                              onClick={() => handleRemoveCountryValidation(idx)}
-                              className="p-1 text-slate-500 hover:text-[#F1707B] rounded"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                 </div>
 
-                {/* AI validation rules and approval paths right */}
                 <div className="space-y-4">
-                  
-                  {/* Approval Routing */}
-                  <div className="p-3.5 bg-slate-500/5 rounded border border-slate-700/10 space-y-3">
-                    <span className="text-[10.5px] font-bold text-slate-400 uppercase block">3. Multi-Step Sign-Off Workflows</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Assign approval roles to execute this payroll event pipeline.</p>
-                    
-                    <div className="space-y-2 pt-1">
+                  {/* Workflow Sign-offs */}
+                  <div className="p-3 bg-slate-500/5 rounded border border-slate-700/10 space-y-3">
+                    <span className="font-bold text-slate-400 uppercase text-[10px] block">2. Approval Workflows Routing</span>
+                    <div className="space-y-1.5">
                       {formWorkflow.map((role, idx) => (
-                        <div key={idx} className="flex items-center justify-between bg-slate-500/10 p-2 rounded text-xs border border-slate-700/10 font-bold">
-                          <span className="text-[#0078D4] flex items-center gap-1">
-                            <span className="text-slate-500 font-mono text-[9px]">{idx + 1}.</span>
-                            {role}
-                          </span>
-                          <button
-                            onClick={() => setFormWorkflow(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-slate-500 hover:text-[#F1707B] p-0.5 rounded"
-                          >
-                            <X size={10} />
-                          </button>
+                        <div key={idx} className="flex justify-between items-center bg-slate-500/10 p-2 rounded text-xs border border-slate-700/5 font-bold text-[#0078D4]">
+                          <span>{idx + 1}. {role}</span>
+                          <button onClick={() => setFormWorkflow(formWorkflow.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-400"><X size={10} /></button>
                         </div>
                       ))}
-
                       <div className="flex gap-1.5 pt-1.5">
-                        <select
-                          id="select_workflow_role_add"
-                          className="flex-1 text-[11px] p-1.5 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white font-semibold outline-none"
-                        >
+                        <select id="sel_add_workflow_role" className="flex-1 text-[11px] p-1.5 bg-[#1F1F1F] border border-[#2D2D2D] text-white rounded">
                           <option value="HR Generalist">HR Generalist</option>
                           <option value="Operations Lead">Operations Lead</option>
-                          <option value="Regional Payroll Manager">Regional Payroll Manager</option>
+                          <option value="Payroll Controller">Payroll Controller</option>
                           <option value="Finance VP">Finance VP</option>
-                          <option value="Executive Director">Executive Director</option>
-                          <option value="Legal Counsel">Legal Counsel</option>
                         </select>
-                        <button
+                        <button 
                           onClick={() => {
-                            const sel = document.getElementById("select_workflow_role_add") as HTMLSelectElement;
-                            if (sel && sel.value) {
-                              setFormWorkflow(prev => [...prev, sel.value]);
-                            }
+                            const sel = document.getElementById("sel_add_workflow_role") as HTMLSelectElement;
+                            if (sel) setFormWorkflow([...formWorkflow, sel.value]);
                           }}
-                          className="bg-[#0078D4] text-white text-[11px] font-bold px-2.5 rounded hover:bg-[#005A9E]"
+                          className="bg-[#0078D4] text-white px-2.5 rounded font-bold text-xs"
                         >
-                          + Add Step
+                          + Add
                         </button>
                       </div>
                     </div>
                   </div>
-
-                  {/* AI Copilot rules */}
-                  <div className="p-3.5 bg-slate-500/5 rounded border border-slate-700/10 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10.5px] font-bold text-slate-400 uppercase">4. AI Audit Validation Instructions</span>
-                      <button
-                        onClick={handleAddAiRule}
-                        className="text-[10px] text-amber-400 font-bold hover:underline"
-                      >
-                        + Add Instruction
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 max-h-[180px] overflow-y-auto">
-                      {formAiRules.map((rule, idx) => (
-                        <div key={idx} className="flex gap-1 items-start bg-slate-500/10 p-2 rounded border border-slate-700/10">
-                          <textarea
-                            value={rule}
-                            rows={2}
-                            onChange={(e) => handleAiRuleChange(idx, e.target.value)}
-                            className="flex-1 text-[10.5px] p-1 rounded bg-[#1F1F1F] border border-[#2D2D2D] text-white outline-none font-medium leading-normal resize-none"
-                          />
-                          <button
-                            onClick={() => handleRemoveAiRule(idx)}
-                            className="p-1 text-slate-500 hover:text-[#F1707B] rounded"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
                 </div>
-
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-700/10">
-                <button
-                  onClick={() => setIsCreatingTemplate(false)}
-                  className={`px-3 py-1.5 border rounded text-xs font-bold transition ${
-                    isDark ? "border-[#2D2D2D] hover:bg-[#2D2D2D] text-slate-300" : "border-[#EDEBE9] hover:bg-[#F3F2F1] text-slate-700"
-                  }`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveDynamicTemplate}
-                  id="btn_save_template"
-                  className="px-4 py-1.5 bg-[#107C10] hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-md flex items-center gap-1"
-                >
-                  <CheckCircle size={13} />
-                  Save Template to Firestore
-                </button>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/10">
+                <button onClick={() => setIsCreatingTemplate(false)} className="px-3 py-1.5 border border-slate-700 rounded text-slate-300 text-xs font-bold hover:bg-slate-700/40">Cancel</button>
+                <button onClick={handleSaveDynamicTemplate} className="px-4 py-1.5 bg-[#107C10] hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-md">Save Template Schema</button>
               </div>
             </div>
-
           )}
-
         </div>
       )}
 
-      {/* --- Tab 3: INGESTION HISTORY TABLE --- */}
+      {/* --- Tab 3: INGESTION HISTORY LOGS (with Developer Controls) --- */}
       {activeTab === "history" && (
-        <div className={`p-3.5 rounded-md border ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9] shadow-sm"}`} id="ingestion_history_tab_wrapper">
-          <div className="flex items-center justify-between border-b pb-2 border-slate-700/10">
-            <div>
-              <h3 className="text-xs font-bold text-white uppercase">Ledger Ingestion Logs & Version Audits</h3>
-              <p className="text-[10.5px] text-slate-400">Archival history of transactional inflows mapped under sovereign regulatory guidelines.</p>
+        <div className="space-y-4">
+          <div className={`p-4 rounded-md border ${isDark ? "bg-[#1F1F1F] border-[#2D2D2D]" : "bg-white border-[#EDEBE9]"}`} id="ingestion_history_tab_wrapper">
+            <div className="border-b border-slate-700/10 pb-3">
+              <h3 className="text-sm font-bold text-white uppercase">Historical Ingestion Logs</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Archival logs of transactional excel datasets mapped under sovereign regulatory guidelines.</p>
+            </div>
+
+            <div className="overflow-x-auto pt-3">
+              {historyItems.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 italic text-xs">No past ingestion log registry entries found. Try uploading some payroll files.</div>
+              ) : (
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700/10 text-slate-400 pb-1.5">
+                      <th className="py-2 px-3 font-semibold">File Name Ingested</th>
+                      <th className="py-2 px-3 font-semibold">Matching Schema</th>
+                      <th className="py-2 px-3 text-center font-semibold">Ingested Volume</th>
+                      <th className="py-2 px-3 font-semibold">Uploaded Date</th>
+                      <th className="py-2 px-3 font-semibold">Triggered User</th>
+                      <th className="py-2 px-3 font-semibold">Mapping Quality</th>
+                      <th className="py-2 px-3 text-right font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyItems.map(h => (
+                      <tr key={h.id} className="border-b border-slate-700/5 transition hover:bg-slate-500/5">
+                        <td className="py-2 px-3 font-bold text-white">{h.fileName}</td>
+                        <td className="py-2 px-3 text-[#0078D4] font-semibold">{h.templateName}</td>
+                        <td className="py-2 px-3 text-center font-mono text-slate-300 font-semibold">{h.recordsCount} items</td>
+                        <td className="py-2 px-3 text-slate-400">{h.time}</td>
+                        <td className="py-2 px-3 text-slate-400">{h.user}</td>
+                        <td className="py-2 px-3">
+                          <span className="text-[#107C10] font-bold font-mono">{h.mappingScore}% aligned</span>
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <span className="px-1.5 py-0.5 rounded font-bold text-[9px] bg-[#107C10]/10 text-[#107C10]">{h.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
-          <div className="overflow-x-auto pt-3">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-700/10 text-slate-400 pb-1.5">
-                  <th className="py-2 px-3">File Name Ingested</th>
-                  <th className="py-2 px-3">Matching Schema</th>
-                  <th className="py-2 px-3 text-center">Ingested Volume</th>
-                  <th className="py-2 px-3">Ingested Time</th>
-                  <th className="py-2 px-3">Triggered User</th>
-                  <th className="py-2 px-3">Mapping Quality</th>
-                  <th className="py-2 px-3 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyItems.map((h) => (
-                  <tr 
-                    key={h.id} 
-                    className={`border-b border-slate-700/5 transition-colors hover:bg-slate-500/5`}
-                  >
-                    <td className="py-2 px-3 font-semibold text-white">{h.fileName}</td>
-                    <td className="py-2 px-3 text-[#0078D4] font-semibold">{h.templateName}</td>
-                    <td className="py-2 px-3 text-center font-mono text-slate-300 font-semibold">{h.recordsCount} items</td>
-                    <td className="py-2 px-3 text-slate-400">{h.time}</td>
-                    <td className="py-2 px-3 text-slate-400">{h.user}</td>
-                    <td className="py-2 px-3">
-                      <span className="text-[#107C10] font-bold font-mono">{h.mappingScore}% aligned</span>
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <span className="px-1.5 py-0.5 rounded font-bold text-[9px] bg-[#107C10]/10 text-[#107C10]">
-                        {h.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* --- ADMIN DEVELOPER CONTROLS PANEL (Phase 1 / Requirements) --- */}
+          <div className="p-4 bg-slate-500/5 rounded-lg border border-[#A80000]/20 space-y-3 shadow-md">
+            <div className="flex items-center gap-2 border-b border-slate-700/10 pb-1.5">
+              <Sliders size={15} className="text-[#A80000]" />
+              <h4 className="text-xs font-bold text-[#A80000] uppercase tracking-wider">Admin Developer System Diagnostics</h4>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Use these sovereign developer utilities to reset test states, rebuild core payroll validation templates, and clear historical caches instantly within the Firestore database backend.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-2">
+              <button 
+                onClick={() => handleAdminAction("Reset Demo Data")}
+                className="px-2 py-1.5 bg-[#A80000] hover:bg-[#800000] text-white text-[10px] font-bold rounded shadow hover:shadow-lg transition-all"
+              >
+                Reset Demo Data
+              </button>
+              <button 
+                onClick={() => handleAdminAction("Remove All Dummy Templates")}
+                className="px-2 py-1.5 bg-[#1F1F1F] border border-slate-700 hover:border-slate-500 text-slate-200 text-[10px] font-bold rounded shadow transition-all"
+              >
+                Remove All Dummy Templates
+              </button>
+              <button 
+                onClick={() => handleAdminAction("Clear Upload History")}
+                className="px-2 py-1.5 bg-[#1F1F1F] border border-slate-700 hover:border-slate-500 text-slate-200 text-[10px] font-bold rounded shadow transition-all"
+              >
+                Clear Upload History
+              </button>
+              <button 
+                onClick={() => handleAdminAction("Reset AI Learning Cache")}
+                className="px-2 py-1.5 bg-[#1F1F1F] border border-slate-700 hover:border-slate-500 text-slate-200 text-[10px] font-bold rounded shadow transition-all"
+              >
+                Reset AI Learning Cache
+              </button>
+              <button 
+                onClick={() => handleAdminAction("Clear Template Registry")}
+                className="px-2 py-1.5 bg-[#1F1F1F] border border-slate-700 hover:border-slate-500 text-slate-200 text-[10px] font-bold rounded shadow transition-all"
+              >
+                Clear Template Registry
+              </button>
+              <button 
+                onClick={() => handleAdminAction("Rebuild Default Payroll Templates")}
+                className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded shadow hover:shadow-lg transition-all"
+              >
+                Rebuild Defaults
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-    </div>
-  );
-}
+      {/* Interactive Record Edit Modal */}
+      {editingRow && detectedTemplate && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1F1F1F] border border-[#2D2D2D] rounded-lg p-4 w-full max-w-md space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-700/10 pb-2">
+              <h4 className="text-xs font-bold text-white uppercase">Modify Record Entry</h4>
+              <button onClick={() => setEditingRow(null)} className="p-1 hover:bg-slate-700/20 text-slate-400 hover:text-white rounded"><X size={14} /></button>
+            </div>
 
-// Extra supporting sub-component for layout icons mapping
-function UserPlusIcon({ size, className }: { size: number; className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <line x1="19" x2="19" y1="8" y2="14" />
-      <line x1="22" x2="16" y1="11" y2="11" />
-    </svg>
+            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 text-xs">
+              {detectedTemplate.requiredFields.map(field => (
+                <div key={field.key} className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block">{field.label}</label>
+                  <input 
+                    type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                    value={editingRow.data[field.key] || ""}
+                    onChange={(e) => {
+                      const updated = { ...editingRow };
+                      updated.data[field.key] = field.type === "number" ? Number(e.target.value) : e.target.value;
+                      setEditingRow(updated);
+                    }}
+                    className="w-full p-2 bg-[#2D2D2D] border border-slate-700 rounded text-white outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-700/10 pt-2">
+              <button onClick={() => setEditingRow(null)} className="px-3 py-1.5 border border-slate-700 hover:bg-slate-700/50 rounded text-slate-300 text-xs">Cancel</button>
+              <button onClick={handleSaveEditedRow} className="px-4 py-1.5 bg-[#0078D4] hover:bg-[#005A9E] text-white text-xs font-bold rounded">Apply Fix</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirm Dialog (bypassing sandbox iframe restrictions) */}
+      {confirmDialog && confirmDialog.isOpen && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-5 w-full max-w-sm space-y-4 shadow-2xl text-left">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-amber-500/10 rounded text-amber-500 shrink-0">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider">{confirmDialog.title}</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">{confirmDialog.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#27272A]">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="px-3 py-1.5 border border-[#27272A] hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const cb = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  cb();
+                }}
+                className="px-4 py-1.5 bg-[#A80000] hover:bg-[#800000] text-white text-xs font-bold rounded shadow transition-all"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert Dialog (bypassing sandbox iframe restrictions) */}
+      {alertDialog && alertDialog.isOpen && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-5 w-full max-w-sm space-y-4 shadow-2xl text-left">
+            <div className="flex items-start gap-3">
+              {alertDialog.type === "success" ? (
+                <div className="p-2 bg-emerald-500/10 rounded text-emerald-500 shrink-0">
+                  <CheckCircle size={20} />
+                </div>
+              ) : alertDialog.type === "error" ? (
+                <div className="p-2 bg-rose-500/10 rounded text-rose-500 shrink-0">
+                  <AlertCircle size={20} />
+                </div>
+              ) : (
+                <div className="p-2 bg-blue-500/10 rounded text-blue-500 shrink-0">
+                  <AlertCircle size={20} />
+                </div>
+              )}
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider">{alertDialog.title}</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">{alertDialog.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-[#27272A]">
+              <button
+                onClick={() => setAlertDialog(null)}
+                className="px-4 py-1.5 bg-[#0078D4] hover:bg-[#005A9E] text-white text-xs font-bold rounded shadow transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

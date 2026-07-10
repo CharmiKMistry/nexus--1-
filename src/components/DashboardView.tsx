@@ -24,6 +24,7 @@ interface DashboardViewProps {
   employees: Employee[];
   validations: ValidationResult[];
   onResolveValidation: (id: string, newStatus: "Resolved" | "Ignored") => Promise<void>;
+  activePeriod: string;
 }
 
 export default function DashboardView({
@@ -34,10 +35,17 @@ export default function DashboardView({
   onTabChange,
   employees,
   validations,
-  onResolveValidation
+  onResolveValidation,
+  activePeriod
 }: DashboardViewProps) {
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
   
+  // Filter validations by active period
+  const filteredValidations = validations.filter(v => {
+    if (v.period) return v.period === activePeriod;
+    return activePeriod === "July 2026";
+  });
+
   // Consume Localization Context
   const { preferences, t, formatCurrency, formatNumber } = useLocalization();
   const widgetOrder = preferences?.widgetOrder || ["metrics", "readiness", "validation", "distribution"];
@@ -87,7 +95,7 @@ export default function DashboardView({
   };
 
   const currentMonthSalarySum = employees.reduce((sum, e) => sum + (e.status === "Active" ? e.salary : 0), 0);
-  const pendingAnomaliesCount = validations.filter(v => v.status === "Pending").length;
+  const pendingAnomaliesCount = filteredValidations.filter(v => v.status === "Pending").length;
 
   // Render interactive table of regulatory governance instead of world map
   const renderCountryGovernanceTable = () => {
@@ -241,7 +249,7 @@ export default function DashboardView({
         </div>
         <div className="flex items-center gap-2 text-[11px] font-semibold">
           <span className="text-slate-400">Current Payroll Cycle:</span>
-          <span className={`px-2 py-0.5 rounded bg-[#0078D4]/10 text-[#0078D4] font-mono`}>JULY 2026 (Active)</span>
+          <span className={`px-2 py-0.5 rounded bg-[#0078D4]/10 text-[#0078D4] font-mono uppercase`}>{activePeriod} ({activePeriod === "July 2026" ? "Active" : "Archived"})</span>
         </div>
       </div>
 
@@ -376,7 +384,7 @@ export default function DashboardView({
                   </div>
 
                   <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-                    {validations.filter(v => v.status === "Pending").length === 0 ? (
+                    {filteredValidations.filter(v => v.status === "Pending").length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center p-3">
                         <CheckCircle size={28} className="text-[#107C10] mb-1.5 animate-pulse" />
                         <h4 className="text-[11px] font-bold text-slate-800 dark:text-slate-100">All Statutory Audits Approved</h4>
@@ -385,7 +393,7 @@ export default function DashboardView({
                         </p>
                       </div>
                     ) : (
-                      validations.filter(v => v.status === "Pending").map(v => (
+                      filteredValidations.filter(v => v.status === "Pending").map(v => (
                         <div 
                           key={v.id}
                           className={`text-[11px] p-2 rounded border transition ${

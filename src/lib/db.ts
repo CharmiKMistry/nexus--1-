@@ -529,4 +529,33 @@ export class NexusDB {
     this.reports = JSON.parse(JSON.stringify(SEED_REPORTS));
     this.notifications = JSON.parse(JSON.stringify(SEED_NOTIFICATIONS));
   }
+
+  // Purges all mock/seeded data for an absolute clean slate
+  public static purgeAll() {
+    this.employees = [];
+    this.payrollEvents = [];
+    this.salaryChanges = [];
+    this.newJoiners = [];
+    this.promotions = [];
+    this.variablePay = [];
+    this.retentionPay = [];
+    this.recoveries = [];
+    this.salesAwards = [];
+    this.overtime = [];
+    this.resignations = [];
+    this.validationLogs = [];
+    this.reconciliations = [];
+    this.reports = [];
+    this.notifications = [];
+    this.auditLogs = [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        user: "Ronak Surve (Super Admin)",
+        role: "Super Admin",
+        action: "Platform Completely Purged",
+        details: "Wiped all pre-seeded and operational data collections to start with a blank dynamic slate."
+      }
+    ];
+  }
 }

@@ -49,6 +49,7 @@ import {
 interface AdminConsoleViewProps {
   theme: "dark" | "light";
   onResetDatabase: (isDynamic?: boolean, loadHistoric?: boolean) => Promise<boolean>;
+  onPurgeDatabase?: () => Promise<boolean>;
   currentRole: string;
   onRoleChange: (role: any) => void;
 }
@@ -56,6 +57,7 @@ interface AdminConsoleViewProps {
 export default function AdminConsoleView({
   theme,
   onResetDatabase,
+  onPurgeDatabase,
   currentRole,
   onRoleChange,
 }: AdminConsoleViewProps) {
@@ -81,6 +83,28 @@ export default function AdminConsoleView({
   const [formRoles, setFormRoles] = useState<string[]>([]);
   const [formMfa, setFormMfa] = useState(true);
   const [formStatus, setFormStatus] = useState("Active");
+
+  // Custom non-blocking dialogs (to avoid iframe sandbox allowance restrictions)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const [alertDialog, setAlertDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmDialog({ isOpen: true, title, message, onConfirm });
+  };
+
+  const showAlert = (title: string, message: string) => {
+    setAlertDialog({ isOpen: true, title, message });
+  };
 
   const isDark = theme === "dark";
 
@@ -146,7 +170,7 @@ export default function AdminConsoleView({
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEmail || !formName) {
-      alert("Please fill in all mandatory fields.");
+      showAlert("Missing Data", "Please fill in all mandatory fields.");
       return;
     }
 
@@ -170,80 +194,90 @@ export default function AdminConsoleView({
       });
 
       if (res.ok) {
-        alert(editingUser ? "✓ User profile updated successfully!" : "✓ New Enterprise User enrolled successfully!");
+        showAlert("Success", editingUser ? "✓ User profile updated successfully!" : "✓ New Enterprise User enrolled successfully!");
         setIsUserModalOpen(false);
         fetchLiveAdminData();
       } else {
-        alert("Failed to commit user profile changes.");
+        showAlert("Save Failed", "Failed to commit user profile changes.");
       }
     } catch (err) {
-      alert("Error saving user.");
+      showAlert("Error", "Error saving user.");
     }
   };
 
-  const handleRevokeUser = async (userId: string) => {
-    if (!window.confirm("Are you sure you want to permanently revoke this user's workspace privileges and delete their account profile?")) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/users/${userId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        alert("✓ User account revoked.");
-        fetchLiveAdminData();
-      } else {
-        alert("Error revoking account.");
+  const handleRevokeUser = (userId: string) => {
+    showConfirm(
+      "Revoke User Privileges",
+      "Are you sure you want to permanently revoke this user's workspace privileges and delete their account profile?",
+      async () => {
+        try {
+          const res = await fetch(`/api/users/${userId}`, {
+            method: "DELETE",
+          });
+          if (res.ok) {
+            showAlert("Revoked", "✓ User account revoked.");
+            fetchLiveAdminData();
+          } else {
+            showAlert("Error", "Error revoking account.");
+          }
+        } catch (err) {
+          showAlert("Error", "Error occurred during revocation.");
+        }
       }
-    } catch (err) {
-      alert("Error.");
-    }
+    );
   };
 
-  const handleToggleUserStatus = async (user: any) => {
+  const handleToggleUserStatus = (user: any) => {
     const nextStatus = user.status === "Active" ? "Suspended" : "Active";
     const msg = `Are you sure you want to toggle account status for ${user.name} to ${nextStatus}?`;
-    if (!window.confirm(msg)) return;
-
-    const payload = { ...user, status: nextStatus };
-    try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        alert(`✓ User status set to ${nextStatus}.`);
-        fetchLiveAdminData();
-      } else {
-        alert("Error toggling status.");
+    showConfirm(
+      "Toggle User Status",
+      msg,
+      async () => {
+        const payload = { ...user, status: nextStatus };
+        try {
+          const res = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            showAlert("Updated", `✓ User status set to ${nextStatus}.`);
+            fetchLiveAdminData();
+          } else {
+            showAlert("Error", "Error toggling status.");
+          }
+        } catch (err) {
+          showAlert("Error", "Error toggling status.");
+        }
       }
-    } catch (err) {
-      alert("Error toggling status.");
-    }
+    );
   };
 
-  const handleResetUserPassword = async (user: any) => {
+  const handleResetUserPassword = (user: any) => {
     const customPassword = `NEXUS-${Math.floor(100000 + Math.random() * 900000)}#`;
     const msg = `Reset credentials for ${user.name}?\nA temporary Microsoft Entra ID password will be dispatched to ${user.email}.`;
-    if (!window.confirm(msg)) return;
-
-    try {
-      const res = await fetch(`/api/users/${user.id}/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ temporaryPassword: customPassword }),
-      });
-      if (res.ok) {
-        alert(`✓ Password successfully reset! Clear text: "${customPassword}". Lock counts cleared and status set to Active.`);
-        fetchLiveAdminData();
-      } else {
-        alert("Error resetting password.");
+    showConfirm(
+      "Reset Password",
+      msg,
+      async () => {
+        try {
+          const res = await fetch(`/api/users/${user.id}/reset-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ temporaryPassword: customPassword }),
+          });
+          if (res.ok) {
+            showAlert("Password Reset", `✓ Password successfully reset! Clear text: "${customPassword}". Lock counts cleared and status set to Active.`);
+            fetchLiveAdminData();
+          } else {
+            showAlert("Error", "Error resetting password.");
+          }
+        } catch (err) {
+          showAlert("Error", "Error resetting password.");
+        }
       }
-    } catch (err) {
-      alert("Error resetting password.");
-    }
+    );
   };
 
   const handleToggleFormRole = (role: string) => {
@@ -277,35 +311,62 @@ export default function AdminConsoleView({
         body: JSON.stringify(permissionsMatrix),
       });
       if (res.ok) {
-        alert("✓ Configurable Permission Matrix updated on the database server!\n\nAll security checkpoints have adjusted authorization vectors instantly.");
+        showAlert("Permissions Saved", "✓ Configurable Permission Matrix updated on the database server!\n\nAll security checkpoints have adjusted authorization vectors instantly.");
       } else {
-        alert("Failed to save permission changes.");
+        showAlert("Error", "Failed to save permission changes.");
       }
     } catch (err) {
-      alert("Error saving matrix.");
+      showAlert("Error", "Error saving matrix.");
     }
   };
 
   // Demo Reseeder
-  const handleResetTrigger = async () => {
-    if (!window.confirm("Are you sure you want to perform a One-Click Database Reset? This will wipe all custom overrides and re-seed the standard event collections.")) {
-      return;
-    }
-
-    setIsResetting(true);
-    try {
-      const success = await onResetDatabase(true, true);
-      if (success) {
-        alert("✓ Enterprise Platform Reset Complete! Re-seeded all collections to baseline configurations.");
-        fetchLiveAdminData();
-      } else {
-        alert("Reseeding failed. Check dev logs.");
+  const handleResetTrigger = () => {
+    showConfirm(
+      "Confirm Platform Reset",
+      "Are you sure you want to perform a One-Click Database Reset? This will wipe all custom overrides and re-seed the standard event collections.",
+      async () => {
+        setIsResetting(true);
+        try {
+          const success = await onResetDatabase(true, true);
+          if (success) {
+            showAlert("Reset Complete", "✓ Enterprise Platform Reset Complete! Re-seeded all collections to baseline configurations.");
+            fetchLiveAdminData();
+          } else {
+            showAlert("Failed", "Reseeding failed. Check dev logs.");
+          }
+        } catch (err) {
+          showAlert("Failed", "Reset execution failed.");
+        } finally {
+          setIsResetting(false);
+        }
       }
-    } catch (err) {
-      alert("Reset execution failed.");
-    } finally {
-      setIsResetting(false);
-    }
+    );
+  };
+
+  const handlePurgeTrigger = () => {
+    showConfirm(
+      "Confirm Entire System Purge",
+      "This will wipe all employees, validations, reconciliations, timesheets, and country statuses from the database, giving you a completely clean, fresh slate for uploading your real manpower lists and payroll sets. This action is irreversible.",
+      async () => {
+        setIsResetting(true);
+        try {
+          if (onPurgeDatabase) {
+            const success = await onPurgeDatabase();
+            if (success) {
+              showAlert("Purge Complete", "✓ All database collections successfully wiped! You now have a clean slate to begin uploading real data.");
+              fetchLiveAdminData();
+            } else {
+              showAlert("Failed", "System purge failed. Please check dev server logs.");
+            }
+          }
+        } catch (err) {
+          showAlert("Failed", "Purge execution failed.");
+        } finally {
+          setIsResetting(false);
+        }
+      }
+    );
   };
 
   // Compute stats
@@ -648,7 +709,7 @@ export default function AdminConsoleView({
                 </Box>
 
                 <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                  <Button variant="contained" startIcon={<SaveIcon />} onClick={() => alert("✓ Global configurations saved and synchronized in real-time across regional runners.")} sx={{ textTransform: "none", fontWeight: 700 }}>
+                  <Button variant="contained" startIcon={<SaveIcon />} onClick={() => showAlert("Configuration Saved", "✓ Global configurations saved and synchronized in real-time across regional runners.")} sx={{ textTransform: "none", fontWeight: 700 }}>
                     Save Configuration
                   </Button>
                 </Box>
@@ -680,9 +741,15 @@ export default function AdminConsoleView({
                   </Typography>
                 </Box>
 
-                <Button variant="contained" color="error" startIcon={<RotateLeftIcon />} disabled={isResetting} onClick={handleResetTrigger} sx={{ textTransform: "none", fontWeight: 700, py: 1 }}>
-                  {isResetting ? "Seeding Database..." : "One-Click Sandbox Reset"}
-                </Button>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}>
+                  <Button variant="contained" color="error" startIcon={<RotateLeftIcon />} disabled={isResetting} onClick={handleResetTrigger} sx={{ textTransform: "none", fontWeight: 700, py: 1 }}>
+                    {isResetting ? "Seeding Database..." : "One-Click Sandbox Reset"}
+                  </Button>
+                  
+                  <Button variant="outlined" color="error" startIcon={<BlockIcon />} disabled={isResetting} onClick={handlePurgeTrigger} sx={{ textTransform: "none", fontWeight: 700, py: 1, borderWidth: "1.5px", "&:hover": { borderWidth: "1.5px" } }}>
+                    {isResetting ? "Processing Purge..." : "Wipe All Simulated Data (Clean Slate)"}
+                  </Button>
+                </Box>
               </CardContent>
             </Card>
           </div>
@@ -758,6 +825,50 @@ export default function AdminConsoleView({
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Custom Confirm Dialog (bypassing sandbox iframe restrictions) */}
+      <Dialog open={Boolean(confirmDialog && confirmDialog.isOpen)} onClose={() => setConfirmDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>{confirmDialog?.title || "Confirmation Required"}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+            {confirmDialog?.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setConfirmDialog(null)} color="inherit" sx={{ textTransform: "none", fontWeight: 700 }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (confirmDialog) {
+                const cb = confirmDialog.onConfirm;
+                setConfirmDialog(null);
+                cb();
+              }
+            }}
+            variant="contained"
+            color="error"
+            sx={{ textTransform: "none", fontWeight: 700 }}
+          >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Custom Alert Dialog (bypassing sandbox iframe restrictions) */}
+      <Dialog open={Boolean(alertDialog && alertDialog.isOpen)} onClose={() => setAlertDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>{alertDialog?.title || "Notification"}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: "text.secondary", mt: 1 }}>
+            {alertDialog?.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setAlertDialog(null)} variant="contained" sx={{ textTransform: "none", fontWeight: 700 }}>
+            Dismiss
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

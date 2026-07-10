@@ -12,21 +12,10 @@ import {
   where,
   orderBy
 } from "firebase/firestore";
-
-// Read credentials from our config
-const firebaseConfig = {
-  projectId: "rugged-folio-6p928",
-  appId: "1:1020163340559:web:b89f7761e442643009267a",
-  apiKey: "AIzaSyABqdjRrvaQMTGQf5q60P79iHI5dQjYH1w",
-  authDomain: "rugged-folio-6p928.firebaseapp.com",
-  // Specify custom firestore database ID from our config
-  databaseId: "ai-studio-2ef7c472-b495-4f05-98fc-714c54737d6d",
-  storageBucket: "rugged-folio-6p928.firebasestorage.app",
-  messagingSenderId: "1020163340559"
-};
+import firebaseConfig from "../../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, (firebaseConfig as any).databaseId || firebaseConfig.firestoreDatabaseId);
 
 // Helper to check and seed initial enterprise data on first run
 export async function seedInitialDatabase(isDynamic: boolean = false, forceReset: boolean = false) {

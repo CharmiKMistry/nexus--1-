@@ -11,7 +11,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Path to save persistent MongoDB configuration and Local JSON database
 const CONFIG_FILE = path.join(process.cwd(), "mongodb_config.json");
@@ -124,7 +125,7 @@ function loadLocalDatabase() {
         id: emp["PS Number"] || emp["PSNumber"],
         name: emp["Employee Name"] || emp["EmployeeName"],
         email: emp["Company Email"] || emp["CompanyEmail"],
-        country: "India",
+        country: emp["Country"] || emp["country"] || "India",
         hub: emp["Hub"] || "Mumbai",
         department: emp["Department"] || "Engineering",
         title: emp["Designation"] || "Specialist",
@@ -132,7 +133,7 @@ function loadLocalDatabase() {
         businessUnit: emp["Business Unit"] || emp["BusinessUnit"] || "Digital",
         employmentType: emp["Employment Type"] || emp["EmploymentType"] || "Permanent",
         joiningDate: emp["Date of Joining"] || emp["DateOfJoining"] || "2023-01-01",
-        currency: "INR",
+        currency: emp["Currency"] || emp["currency"] || "INR",
         salary: Number(emp["Base Salary"] || emp["BaseSalary"] || 0),
         status: emp["Status"] || "Active",
         manager: emp["Manager"] || ""
@@ -720,6 +721,20 @@ async function connectToMongo(uri: string, dbName: string = "nexus") {
   // Save successful config
   dbConfig = { uri, dbName: targetDbName };
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(dbConfig, null, 2), "utf-8");
+}
+
+async function getEmployeesCollectionName(): Promise<string> {
+  if (!mongoDb) return "employees";
+  try {
+    const collections = await mongoDb.listCollections().toArray();
+    const collectionNames = collections.map((c: any) => c.name);
+    if (collectionNames.includes("manpower_master")) {
+      return "manpower_master";
+    }
+  } catch (err) {
+    // Ignore error and fallback to default
+  }
+  return "employees";
 }
 
 async function seedMongoIfEmpty() {
@@ -1452,8 +1467,9 @@ app.post("/api/mongodb/reset", async (req, res) => {
       await mongoDb.collection("countries").deleteMany({});
       await mongoDb.collection("countries").insertMany(countriesList);
 
-      await mongoDb.collection("employees").deleteMany({});
-      await mongoDb.collection("employees").insertMany(employeesList);
+      const empCol = await getEmployeesCollectionName();
+      await mongoDb.collection(empCol).deleteMany({});
+      await mongoDb.collection(empCol).insertMany(employeesList);
 
       await mongoDb.collection("validationResults").deleteMany({});
       await mongoDb.collection("validationResults").insertMany(validationsList);
@@ -1478,6 +1494,47 @@ app.post("/api/mongodb/reset", async (req, res) => {
     });
   } catch (err: any) {
     console.error("Failed to reset database:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Purge all data collections to start with a blank dynamic slate
+app.post("/api/database/purge-all", async (req, res) => {
+  try {
+    const auditLogsList = [
+      {
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        user: "Ronak Surve (Super Admin)",
+        role: "Super Admin",
+        action: "Platform Purged",
+        details: "Wiped all pre-seeded and operational data collections to start with a blank dynamic slate."
+      }
+    ];
+
+    if (mongoDb) {
+      const empCol = await getEmployeesCollectionName();
+      await mongoDb.collection(empCol).deleteMany({});
+      await mongoDb.collection("validationResults").deleteMany({});
+      await mongoDb.collection("reconciliationResults").deleteMany({});
+      await mongoDb.collection("clientTimesheets").deleteMany({});
+      await mongoDb.collection("auditLogs").deleteMany({});
+      await mongoDb.collection("auditLogs").insertMany(auditLogsList);
+    } else {
+      localDatabase.employees = [];
+      localDatabase.validationResults = [];
+      localDatabase.reconciliationResults = [];
+      localDatabase.clientTimesheets = [];
+      localDatabase.auditLogs = auditLogsList;
+      saveLocalDatabase();
+    }
+
+    return res.json({
+      success: true,
+      message: "Database successfully purged. Start with a clean dynamic slate!"
+    });
+  } catch (err: any) {
+    console.error("Failed to purge database:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -1523,22 +1580,8 @@ app.post("/api/countries", async (req, res) => {
 app.get("/api/employees", async (req, res) => {
   try {
     if (mongoDb) {
-      let list: any[] = [];
-      try {
-        const collections = await mongoDb.listCollections().toArray();
-        const collectionNames = collections.map((c: any) => c.name);
-        
-        if (collectionNames.includes("manpower_master")) {
-          list = await mongoDb.collection("manpower_master").find({}).toArray();
-        } else if (collectionNames.includes("employees")) {
-          list = await mongoDb.collection("employees").find({}).toArray();
-        } else {
-          list = await mongoDb.collection("employees").find({}).toArray();
-        }
-      } catch (err) {
-        // Fallback if listCollections fails
-        list = await mongoDb.collection("employees").find({}).toArray();
-      }
+      const empCol = await getEmployeesCollectionName();
+      const list = await mongoDb.collection(empCol).find({}).toArray();
       return res.json(list);
     }
     return res.json(localDatabase.employees);
@@ -1875,7 +1918,8 @@ app.post("/api/employees", async (req, res) => {
   try {
     const emp = req.body;
     if (mongoDb) {
-      await mongoDb.collection("employees").updateOne(
+      const empCol = await getEmployeesCollectionName();
+      await mongoDb.collection(empCol).updateOne(
         { id: emp.id },
         { $set: emp },
         { upsert: true }
@@ -1899,12 +1943,63 @@ app.delete("/api/employees/:id", async (req, res) => {
   try {
     const id = req.params.id;
     if (mongoDb) {
-      await mongoDb.collection("employees").deleteOne({ id: id });
+      const empCol = await getEmployeesCollectionName();
+      await mongoDb.collection(empCol).deleteOne({ id: id });
     } else {
       localDatabase.employees = localDatabase.employees.filter(e => e.id !== id);
       saveLocalDatabase();
     }
     return res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk upsert employees endpoint
+app.post("/api/employees/bulk", async (req, res) => {
+  try {
+    const employeesList = req.body;
+    if (!Array.isArray(employeesList)) {
+      return res.status(400).json({ error: "Payload must be an array" });
+    }
+
+    if (mongoDb) {
+      const empCol = await getEmployeesCollectionName();
+      for (const emp of employeesList) {
+        await mongoDb.collection(empCol).updateOne(
+          { id: emp.id },
+          { $set: emp },
+          { upsert: true }
+        );
+      }
+    } else {
+      for (const emp of employeesList) {
+        const idx = localDatabase.employees.findIndex(e => e.id === emp.id);
+        if (idx >= 0) {
+          localDatabase.employees[idx] = emp;
+        } else {
+          localDatabase.employees.push(emp);
+        }
+      }
+      saveLocalDatabase();
+    }
+    return res.json({ success: true, count: employeesList.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset employees endpoint (completely clears all employee records to start with a clean dynamic slate)
+app.post("/api/employees/reset", async (req, res) => {
+  try {
+    if (mongoDb) {
+      const empCol = await getEmployeesCollectionName();
+      await mongoDb.collection(empCol).deleteMany({});
+    } else {
+      localDatabase.employees = [];
+      saveLocalDatabase();
+    }
+    return res.json({ success: true, employees: [] });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -121,8 +121,16 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
 
-  // Selection states
-  const [selectedTimesheet, setSelectedTimesheet] = useState<ClientTimesheet | null>(null);
+  // Selection states (Connected as per Goal 10)
+  const [selectedAllocation, setSelectedAllocation] = useState<ClientTimesheet | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<WorkflowLog[]>([]);
+  const [allocationStatus, setAllocationStatus] = useState<string>("");
+
+  // Keep selectedTimesheet as alias for compatibility across remaining codebase
+  const selectedTimesheet = selectedAllocation;
+  const setSelectedTimesheet = setSelectedAllocation;
+
   const [currentMonth, setCurrentMonth] = useState<string>("2026-07"); // YYYY-MM
   const [selectedDates, setSelectedDates] = useState<string[]>([]); // for bulk operations
   const [isBulkMode, setIsBulkMode] = useState(false);
@@ -142,6 +150,59 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
     location: "Onsite",
     comments: ""
   });
+
+  // Dirty state check to prompt user for unsaved changes (Goal 6)
+  const isFormDirty = () => {
+    const original = editingTimesheet ? {
+      employeeId: editingTimesheet.employeeId,
+      employeeName: editingTimesheet.employeeName,
+      date: editingTimesheet.date,
+      project: editingTimesheet.project,
+      client: editingTimesheet.client,
+      regularHours: editingTimesheet.regularHours,
+      overtimeHours: editingTimesheet.overtimeHours,
+      shift: editingTimesheet.shift,
+      location: editingTimesheet.location,
+      comments: editingTimesheet.comments
+    } : {
+      employeeId: currentUser.psNumber,
+      employeeName: currentUser.name,
+      date: selectedDate || "",
+      project: "Automated Payroll Ledger Integration",
+      client: "Chevron",
+      regularHours: 8,
+      overtimeHours: 0,
+      shift: "General",
+      location: "Onsite",
+      comments: ""
+    };
+
+    return (
+      formValues.project !== original.project ||
+      formValues.client !== original.client ||
+      formValues.regularHours !== original.regularHours ||
+      formValues.overtimeHours !== original.overtimeHours ||
+      formValues.shift !== original.shift ||
+      formValues.location !== original.location ||
+      formValues.comments !== original.comments ||
+      formValues.date !== original.date
+    );
+  };
+
+  // Reactive state listener (Goal 11)
+  useEffect(() => {
+    if (selectedAllocation) {
+      setTimelineEvents(selectedAllocation.workflowLogs || []);
+      setAllocationStatus(selectedAllocation.status || "Draft");
+    } else {
+      setTimelineEvents([]);
+      if (selectedDate) {
+        setAllocationStatus("not_found");
+      } else {
+        setAllocationStatus("");
+      }
+    }
+  }, [selectedAllocation, selectedDate]);
 
   // Bulk input form
   const [bulkValues, setBulkValues] = useState({
@@ -180,10 +241,18 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
       const data = await res.json();
       setTimesheets(data);
       
-      // Keep track of active selection if it still exists
-      if (selectedTimesheet) {
-        const updated = data.find((ts: ClientTimesheet) => ts.id === selectedTimesheet.id);
-        if (updated) setSelectedTimesheet(updated);
+      // Keep track of active selection if it still exists (Goal 5, Goal 12)
+      if (selectedAllocation) {
+        const updated = data.find((ts: ClientTimesheet) => ts.id === selectedAllocation.id);
+        if (updated) {
+          setSelectedAllocation(updated);
+        } else if (selectedDate) {
+          const updatedByDate = data.find((ts: ClientTimesheet) => ts.date === selectedDate && ts.employeeId === currentUser.psNumber);
+          if (updatedByDate) setSelectedAllocation(updatedByDate);
+        }
+      } else if (selectedDate) {
+        const updatedByDate = data.find((ts: ClientTimesheet) => ts.date === selectedDate && ts.employeeId === currentUser.psNumber);
+        if (updatedByDate) setSelectedAllocation(updatedByDate);
       }
       
       setError(null);
@@ -218,10 +287,14 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
 
       if (!res.ok) throw new Error("Failed to submit timesheet record");
       
-      setSuccessMsg(editingTimesheet ? "Timesheet updated successfully!" : "Timesheet draft saved successfully!");
+      const successText = editingTimesheet ? "Timesheet updated successfully!" : "Timesheet draft saved successfully!";
+      setSuccessMsg(successText);
+      
       setOpenModal(false);
       setEditingTimesheet(null);
-      fetchClientTimesheets();
+      
+      // Refresh everything without reload (Goal 4, Goal 5, Goal 12)
+      await fetchClientTimesheets();
       
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
@@ -259,9 +332,12 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
       if (!res.ok) throw new Error("Failed to process workflow action");
       const updatedData = await res.json();
       
-      setSuccessMsg(`Timesheet status changed to: ${actionStage}!`);
+      const successText = `Timesheet status changed to: ${actionStage}!`;
+      setSuccessMsg(successText);
       setWorkflowComment("");
-      fetchClientTimesheets();
+      
+      // Refresh database, calendar, timeline, and counters (Goal 4, Goal 5)
+      await fetchClientTimesheets();
       
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
@@ -369,9 +445,18 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
   };
 
   const openFormForDate = (dateStr: string) => {
+    // Preserve unsaved changes warning (Goal 6)
+    if (openModal && isFormDirty()) {
+      const leave = window.confirm("You have unsaved changes in the open form. Are you sure you want to discard them and select this date?");
+      if (!leave) return;
+    }
+
+    setSelectedDate(dateStr);
+    
     const existing = timesheets.find(ts => ts.date === dateStr && ts.employeeId === currentUser.psNumber);
     
     if (existing) {
+      setSelectedAllocation(existing);
       setEditingTimesheet(existing);
       setFormValues({
         employeeId: existing.employeeId,
@@ -386,6 +471,7 @@ export default function TimesheetPortal({ theme }: TimesheetPortalProps) {
         comments: existing.comments
       });
     } else {
+      setSelectedAllocation(null);
       setEditingTimesheet(null);
       setFormValues({
         employeeId: currentUser.psNumber,

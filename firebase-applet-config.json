@@ -3,8 +3,9 @@
   "appId": "1:1020163340559:web:b89f7761e442643009267a",
   "apiKey": "AIzaSyABqdjRrvaQMTGQf5q60P79iHI5dQjYH1w",
   "authDomain": "rugged-folio-6p928.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-2ef7c472-b495-4f05-98fc-714c54737d6d",
+  "firestoreDatabaseId": "ai-studio-nexus1-e33dc6d0-0eb0-4da5-ae69-8fe3b9ffcd55",
   "storageBucket": "rugged-folio-6p928.firebasestorage.app",
   "messagingSenderId": "1020163340559",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "1020163340559-q7r892tdqp1ft6k85acvlafvduo34i3q.apps.googleusercontent.com"
 }

@@ -235,6 +235,12 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [validations, setValidations] = useState<ValidationResult[]>([]);
   const [reconciliations, setReconciliations] = useState<ReconciliationResult[]>([]);
+  const [activePeriod, setActivePeriodState] = useState<string>(() => sessionStorage.getItem("nexus_active_period") || "July 2026");
+
+  const setActivePeriod = (period: string) => {
+    setActivePeriodState(period);
+    sessionStorage.setItem("nexus_active_period", period);
+  };
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     { id: "n-1", title: "Compliance Breach Flagged", message: "Germany daily maximum limit exceeded (11.5 hours) for Employee Anna Weber.", type: "error", timestamp: "03:15 UTC", read: false },
     { id: "n-2", title: "CPF Inconsistency Aligned", message: "AI suggested retro CPF adjustment of S$ 250.00 pending audit approval.", type: "warning", timestamp: "03:16 UTC", read: false },
@@ -307,7 +313,8 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
         confidenceScore: 97,
         explanation: "Worked 62 hours this week. Federal FLSA laws require 1.5x premium rate for all hours exceeding 40. Current timesheet payload does not specify the premium modifier.",
         recommendedResolution: "Recalculate timesheet hourly rate for 22 excess hours at 1.5x of $45.00/hr ($1,485.00 adjustment).",
-        status: "Pending"
+        status: "Pending",
+        period: activePeriod
       };
       await fetch("/api/validation-results", {
         method: "POST",
@@ -326,7 +333,8 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
         type: "Overtime Reconciliation",
         confidence: 95,
         aiRecommendation: "Authorize 22 hours overtime premium pay. Verified with corporate badge-in records showing office occupancy until 10:45 PM daily.",
-        status: "Pending"
+        status: "Pending",
+        period: activePeriod
       };
       await fetch("/api/reconciliation-results", {
         method: "POST",
@@ -523,6 +531,87 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
     }
   };
 
+  const handleBulkSaveEmployees = async (newEmps: Employee[]) => {
+    try {
+      await fetch("/api/employees/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newEmps)
+      });
+
+      setEmployees(prev => {
+        const updated = [...prev];
+        newEmps.forEach(emp => {
+          const idx = updated.findIndex(e => e.id === emp.id);
+          if (idx >= 0) {
+            updated[idx] = emp;
+          } else {
+            updated.push(emp);
+          }
+        });
+        return updated;
+      });
+
+      // Log action in audit logs
+      await fetch("/api/audit-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          user: `Ronak Surve (${currentRole})`,
+          role: currentRole,
+          action: `Bulk hydrated employee directory`,
+          details: `Added/updated ${newEmps.length} synthetic employee records directly to the database.`
+        })
+      });
+    } catch (err) {
+      console.error("Failed to bulk save employees to backend:", err);
+      // Fallback
+      setEmployees(prev => {
+        const updated = [...prev];
+        newEmps.forEach(emp => {
+          const idx = updated.findIndex(e => e.id === emp.id);
+          if (idx >= 0) {
+            updated[idx] = emp;
+          } else {
+            updated.push(emp);
+          }
+        });
+        return updated;
+      });
+    }
+  };
+
+  const handleResetEmployees = async () => {
+    try {
+      const res = await fetch("/api/employees/reset", {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEmployees(data.employees);
+
+        // Log action in audit logs
+        await fetch("/api/audit-logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            timestamp: new Date().toISOString(),
+            user: `Ronak Surve (${currentRole})`,
+            role: currentRole,
+            action: `Reset employee directory`,
+            details: "Wiped all employee records and reset the dynamic roster and indicators to zero for fresh spreadsheet upload."
+          })
+        });
+      } else {
+        throw new Error(data.error || "Reset endpoint returned success: false");
+      }
+    } catch (err) {
+      console.error("Failed to reset employee directory:", err);
+      throw err;
+    }
+  };
+
   // Reset database & seed to pristine state dynamically on the backend
   const handleResetDatabase = async (isDynamic: boolean = false, loadHistoric: boolean = false): Promise<boolean> => {
     try {
@@ -557,6 +646,33 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
     }
   };
 
+  const handlePurgeDatabase = async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/database/purge-all", {
+        method: "POST"
+      });
+      const data = await res.json();
+      
+      // Wipe NexusDB client-side
+      NexusDB.purgeAll();
+
+      // Refresh all state variables to empty
+      setEmployees([]);
+      setValidations([]);
+      setReconciliations([]);
+      
+      // Keep countries list but we can refresh them
+      const countryRes = await fetch("/api/countries");
+      const countryList = await countryRes.json();
+      setCountries(countryList.sort((a: Country, b: Country) => b.readinessScore - a.readinessScore));
+
+      return data.success;
+    } catch (err) {
+      console.error("Database purge failed:", err);
+      return false;
+    }
+  };
+
   const activeNotifCount = notifications.filter(n => !n.read).length;
 
   // View router mapping the 14 Sidebar items
@@ -573,6 +689,7 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             employees={employees}
             validations={validations}
             onResolveValidation={handleResolveValidation}
+            activePeriod={activePeriod}
           />
         );
       case "manpower":
@@ -581,6 +698,8 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             employees={employees}
             onSaveEmployee={handleSaveEmployee}
             onDeleteEmployee={handleDeleteEmployee}
+            onBulkSaveEmployees={handleBulkSaveEmployees}
+            onResetEmployees={handleResetEmployees}
             currentRole={currentRole}
             theme={theme}
           />
@@ -597,6 +716,7 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             validations={validations}
             onResolve={handleResolveValidation}
             theme={theme}
+            activePeriod={activePeriod}
           />
         );
       case "reconciliation":
@@ -605,6 +725,7 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             reconciliations={reconciliations}
             onReconcile={handleResolveReconciliation}
             theme={theme}
+            activePeriod={activePeriod}
           />
         );
       case "approval":
@@ -621,8 +742,8 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
           <PayrollReadiness
             theme={theme}
             countries={countries}
-            validations={validations}
-            reconciliations={reconciliations}
+            validations={validations.filter(v => v.period ? v.period === activePeriod : activePeriod === "July 2026")}
+            reconciliations={reconciliations.filter(r => r.period ? r.period === activePeriod : activePeriod === "July 2026")}
             onTabChange={setActiveTab}
           />
         );
@@ -643,6 +764,7 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
           <AdminConsoleView
             theme={theme}
             onResetDatabase={handleResetDatabase}
+            onPurgeDatabase={handlePurgeDatabase}
             currentRole={currentRole}
             onRoleChange={handleRoleChange}
           />
@@ -658,6 +780,7 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             employees={employees}
             validations={validations}
             onResolveValidation={handleResolveValidation}
+            activePeriod={activePeriod}
           />
         );
     }
@@ -687,7 +810,7 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
-      <div className={`h-screen flex overflow-hidden font-sans ${theme === "dark" ? "bg-[#111111] text-[#F5F5F5]" : "bg-[#FAF9F8] text-[#323130]"}`} id="nexus_app_root">
+      <div className={`h-screen flex overflow-hidden font-sans ${theme === "dark" ? "dark bg-[#111111] text-[#F5F5F5]" : "light bg-[#FAF9F8] text-[#323130]"}`} id="nexus_app_root">
         {/* Sidebar navigation */}
         <Sidebar 
           activeTab={activeTab} 
@@ -718,6 +841,8 @@ export function AppContent({ theme, setTheme }: AppContentProps) {
             validations={validations}
             reconciliations={reconciliations}
             setActiveTab={setActiveTab}
+            activePeriod={activePeriod}
+            setActivePeriod={setActivePeriod}
           />
 
           {/* Scrollable Workspace */}

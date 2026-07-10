@@ -60,6 +60,8 @@ interface HeaderProps {
   reconciliations?: ReconciliationResult[];
   auditLogs?: AuditLog[];
   setActiveTab?: (tab: string) => void;
+  activePeriod?: string;
+  setActivePeriod?: (period: string) => void;
 }
 
 export default function Header({
@@ -78,7 +80,9 @@ export default function Header({
   validations = [],
   reconciliations = [],
   auditLogs = [],
-  setActiveTab
+  setActiveTab,
+  activePeriod,
+  setActivePeriod
 }: HeaderProps) {
   const { language, setLanguage, isRtl, t, formatDate, formatCurrency } = useLocalization();
   
@@ -86,6 +90,7 @@ export default function Header({
   const [roleAnchorEl, setRoleAnchorEl] = useState<null | HTMLElement>(null);
   const [languageAnchorEl, setLanguageAnchorEl] = useState<null | HTMLElement>(null);
   const [helpAnchorEl, setHelpAnchorEl] = useState<null | HTMLElement>(null);
+  const [periodAnchorEl, setPeriodAnchorEl] = useState<null | HTMLElement>(null);
   
   // Dialog Open States for Help Center
   const [openUserGuide, setOpenUserGuide] = useState(false);
@@ -485,7 +490,77 @@ export default function Header({
         )}
       </Box>
     </Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexShrink: 0 }}>
+        {/* Active Payroll Period Selector */}
+        {activePeriod && setActivePeriod && (
+          <>
+            <Tooltip title="Select Operational Payroll Period" arrow>
+              <Button
+                onClick={(e) => setPeriodAnchorEl(e.currentTarget)}
+                id="payroll_period_dropdown_trigger"
+                variant="text"
+                size="small"
+                startIcon={<AccessTimeIcon sx={{ fontSize: 13, color: "#2563EB" }} />}
+                endIcon={<ArrowDownIcon sx={{ fontSize: 13 }} />}
+                sx={{
+                  height: 34,
+                  textTransform: "none",
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                  minWidth: "fit-content",
+                  color: isDark ? "#60A5FA" : "#1E3A8A",
+                  backgroundColor: isDark ? "rgba(96, 165, 250, 0.1)" : "rgba(30, 58, 138, 0.05)",
+                  border: `1px solid ${isDark ? "rgba(96, 165, 250, 0.2)" : "rgba(30, 58, 138, 0.1)"}`,
+                  borderRadius: "5px",
+                  "&:hover": {
+                    backgroundColor: isDark ? "rgba(96, 165, 250, 0.15)" : "rgba(30, 58, 138, 0.1)",
+                  },
+                }}
+              >
+                Period: {activePeriod}
+              </Button>
+            </Tooltip>
+            <Menu
+              anchorEl={periodAnchorEl}
+              open={Boolean(periodAnchorEl)}
+              onClose={() => setPeriodAnchorEl(null)}
+              id="payroll_period_selection_menu"
+              sx={{
+                "& .MuiPaper-root": {
+                  backgroundColor: isDark ? "#1F2937" : "#FFFFFF",
+                  border: `1px solid ${isDark ? "#374151" : "#E5E7EB"}`,
+                  color: isDark ? "#F3F4F6" : "#111827",
+                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                  borderRadius: "6px",
+                }
+              }}
+            >
+              {["July 2026", "June 2026", "May 2026", "April 2026"].map((p) => (
+                <MenuItem
+                  key={p}
+                  id={`period_select_${p.replace(/\s+/g, "_")}`}
+                  selected={p === activePeriod}
+                  onClick={() => {
+                    setActivePeriod(p);
+                    setPeriodAnchorEl(null);
+                  }}
+                  sx={{
+                    fontSize: "12px",
+                    py: 1,
+                    px: 2.5,
+                    fontWeight: p === activePeriod ? 700 : 500,
+                    color: p === activePeriod ? (isDark ? "#60A5FA" : "#2563EB") : "inherit",
+                  }}
+                >
+                  {p}
+                </MenuItem>
+              ))}
+            </Menu>
+          </>
+        )}
+
         {/* UTC Clock */}
         <Box
           sx={{
@@ -494,6 +569,8 @@ export default function Header({
             gap: 0.8,
             fontSize: "11px",
             fontFamily: "'Roboto Mono', monospace",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
             color: isDark ? "#9CA3AF" : "#6B7280",
             backgroundColor: isDark ? "#1F2937" : "#F3F4F6",
             px: 1.5,
@@ -502,8 +579,8 @@ export default function Header({
             border: `1px solid ${isDark ? "#374151" : "#E5E7EB"}`,
           }}
         >
-          <AccessTimeIcon sx={{ fontSize: 12 }} />
-          <span>UTC 2026-07-09 07:15</span>
+          <AccessTimeIcon sx={{ fontSize: 12, flexShrink: 0 }} />
+          <span style={{ whiteSpace: "nowrap" }}>UTC 2026-07-09 07:15</span>
         </Box>
 
         {/* Dynamic Language Selector with Country Flags */}

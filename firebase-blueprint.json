@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "Country": {
+      "title": "Country",
+      "description": "Country-specific payroll configuration and scorecards",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "flag": { "type": "string" },
+        "currency": { "type": "string" },
+        "workingHours": { "type": "integer" },
+        "taxRules": { "type": "string" },
+        "overtimePolicy": { "type": "string" },
+        "leavePolicy": { "type": "string" },
+        "holidayCalendar": { "type": "string" },
+        "payrollCalendar": { "type": "string" },
+        "workflow": { "type": "array" },
+        "readinessScore": { "type": "number" },
+        "complianceScore": { "type": "number" },
+        "dataQualityScore": { "type": "number" },
+        "status": { "type": "string" },
+        "riskLevel": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Corporate employee record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "country": { "type": "string" },
+        "department": { "type": "string" },
+        "title": { "type": "string" },
+        "salary": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Rule": {
+      "title": "Rule",
+      "description": "Payroll compliance validation rules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "country": { "type": "string" },
+        "code": { "type": "string" },
+        "category": { "type": "string" },
+        "limit": { "type": "number" },
+        "penalty": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "country", "code"]
+    },
+    "ValidationResult": {
+      "title": "ValidationResult",
+      "description": "Validation issues detected",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "country": { "type": "string" },
+        "issueType": { "type": "string" },
+        "severity": { "type": "string" },
+        "confidenceScore": { "type": "number" },
+        "explanation": { "type": "string" },
+        "recommendedResolution": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "employeeId", "issueType"]
+    },
+    "ReconciliationResult": {
+      "title": "ReconciliationResult",
+      "description": "Reconciliation matching discrepancy",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "name": { "type": "string" },
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "discrepancy": { "type": "string" },
+        "type": { "type": "string" },
+        "confidence": { "type": "number" },
+        "aiRecommendation": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "employeeId"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System-wide tracking logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "user": { "type": "string" },
+        "role": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["timestamp", "action"]
+    },
+    "PayrollTemplate": {
+      "title": "PayrollTemplate",
+      "description": "Data mapping master templates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "country": { "type": "string" },
+        "fields": { "type": "array" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "template_registry": {
+      "schema": "PayrollTemplate",
+      "description": "Collection of all payroll templates"
+    },
+    "Countries": {
+      "schema": "Country",
+      "description": "Collection of active country payroll parameters"
+    },
+    "Employees": {
+      "schema": "Employee",
+      "description": "Collection of employees"
+    },
+    "Rules": {
+      "schema": "Rule",
+      "description": "Collection of compliance policies"
+    },
+    "ValidationResults": {
+      "schema": "ValidationResult",
+      "description": "Payroll pipeline errors and violations"
+    },
+    "ReconciliationResults": {
+      "schema": "ReconciliationResult",
+      "description": "Double-ledger reconciliation differences"
+    },
+    "AuditLogs": {
+      "schema": "AuditLog",
+      "description": "Governance trails"
+    }
+  }
+}

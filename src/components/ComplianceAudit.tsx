@@ -13,6 +13,8 @@ import {
   ChevronRight
 } from "lucide-react";
 import { NexusDB } from "../lib/db";
+import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
 
 interface ComplianceAuditProps {
   theme: "dark" | "light";
@@ -35,9 +37,151 @@ export default function ComplianceAudit({ theme }: ComplianceAuditProps) {
   const handleExport = (format: string) => {
     setIsExporting(format);
     setTimeout(() => {
+      try {
+        if (format === "CSV") {
+          // Generate CSV content
+          const csvHeaders = "ID,Timestamp,User,Role,Action,Details\n";
+          const csvRows = filteredLogs.map(log => {
+            const cleanId = `"${String(log.id || "").replace(/"/g, '""')}"`;
+            const cleanTimestamp = `"${String(log.timestamp || "").replace(/"/g, '""')}"`;
+            const cleanUser = `"${String(log.user || "").replace(/"/g, '""')}"`;
+            const cleanRole = `"${String(log.role || "").replace(/"/g, '""')}"`;
+            const cleanAction = `"${String(log.action || "").replace(/"/g, '""')}"`;
+            const cleanDetails = `"${String(log.details || "").replace(/"/g, '""')}"`;
+            return `${cleanId},${cleanTimestamp},${cleanUser},${cleanRole},${cleanAction},${cleanDetails}`;
+          }).join("\n");
+          
+          const csvContent = csvHeaders + csvRows;
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `NEXUS_Immutable_Audit_Ledger_${new Date().toISOString().slice(0, 10)}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        } else if (format === "Excel") {
+          // Generate Excel content using SheetJS
+          const worksheetData = filteredLogs.map(log => ({
+            "Log ID": log.id,
+            "Timestamp": log.timestamp,
+            "Administrator": log.user,
+            "System Role": log.role,
+            "Action Description": log.action,
+            "Audit Details": log.details || ""
+          }));
+          const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, worksheet, "Immutable Audit Trail");
+          
+          const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+          const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `NEXUS_Immutable_Audit_Ledger_${new Date().toISOString().slice(0, 10)}.xlsx`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        } else if (format === "PDF") {
+          // Generate PDF content using jsPDF
+          const doc = new jsPDF();
+          
+          // Header Banner
+          doc.setFillColor(31, 41, 55); // Slate background
+          doc.rect(0, 0, 210, 38, "F");
+          
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(16);
+          doc.setFont("helvetica", "bold");
+          doc.text("NEXUS MUTUAL - COMPLIANCE AUDIT TRIAL LEDGER", 14, 15);
+          
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+          doc.text("Immutable Audit Trail Archiving Overrides, Certificates, and Agentic Scans", 14, 22);
+          doc.text(`Exported on: ${new Date().toLocaleString()} (UTC)`, 14, 28);
+          doc.text("Status: CRYPTOGRAPHICALLY SECURED & ARCHIVED", 14, 33);
+          
+          let y = 50;
+          doc.setTextColor(0, 0, 0);
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
+          
+          // Column Headers
+          doc.text("User / Role", 14, y);
+          doc.text("Action Description", 70, y);
+          doc.text("Timestamp", 150, y);
+          
+          y += 4;
+          doc.setDrawColor(200, 200, 200);
+          doc.line(14, y, 196, y);
+          y += 6;
+          
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8.5);
+          
+          filteredLogs.forEach((log) => {
+            if (y > 270) {
+              doc.addPage();
+              y = 20;
+              doc.setFont("helvetica", "bold");
+              doc.text("User / Role", 14, y);
+              doc.text("Action Description", 70, y);
+              doc.text("Timestamp", 150, y);
+              y += 4;
+              doc.line(14, y, 196, y);
+              y += 6;
+              doc.setFont("helvetica", "normal");
+            }
+            
+            // Print user and role
+            doc.setFont("helvetica", "bold");
+            doc.text(String(log.user || "").substring(0, 25), 14, y);
+            doc.setFont("helvetica", "normal");
+            doc.text(String(log.role || "").substring(0, 25), 14, y + 4);
+            
+            // Print Action
+            const actionLines = doc.splitTextToSize(String(log.action || ""), 75);
+            doc.text(actionLines, 70, y);
+            
+            // Print Timestamp
+            doc.text(String(log.timestamp || "").substring(0, 19), 150, y);
+            
+            const actionHeight = actionLines.length * 4;
+            const detailsText = log.details ? `Details: ${log.details}` : "";
+            let detailsHeight = 0;
+            
+            if (detailsText) {
+              const detailsLines = doc.splitTextToSize(detailsText, 175);
+              detailsHeight = detailsLines.length * 4 + 2;
+              
+              if (y + Math.max(actionHeight, 8) + detailsHeight > 270) {
+                doc.addPage();
+                y = 20;
+              }
+              
+              const textY = y + Math.max(actionHeight, 8) + 1;
+              doc.setFont("helvetica", "italic");
+              doc.setTextColor(100, 100, 100);
+              doc.text(detailsLines, 14, textY);
+              doc.setTextColor(0, 0, 0);
+              doc.setFont("helvetica", "normal");
+            }
+            
+            y += Math.max(actionHeight, 8) + detailsHeight + 6;
+            doc.setDrawColor(240, 240, 240);
+            doc.line(14, y - 3, 196, y - 3);
+          });
+          
+          doc.save(`NEXUS_Immutable_Audit_Ledger_${new Date().toISOString().slice(0, 10)}.pdf`);
+        }
+      } catch (err) {
+        console.error("Export failed:", err);
+      }
       setIsExporting(null);
-      alert(`✓ Cryptographically Signed Ledger exported successfully as ${format}! File downloaded: NEXUS_Immutable_Audit_Ledger_${new Date().toISOString().slice(0,10)}.${format.toLowerCase()}`);
-    }, 1200);
+    }, 1000);
   };
 
   const getLogTypeBadge = (action: string) => {

@@ -5,3 +5,120 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
+
+/* GLOBAL THEME-BASED HIGH CONTRAST ADJUSTMENTS FOR LIGHT MODE */
+
+/* 1. Reset text-white to dark text in light mode except in explicit white-text containers (like colored buttons, tabs, badges) */
+.light .text-white:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #111827 !important; /* text-slate-900 */
+}
+
+/* 2. Map light-slate colors to dark-slate colors in light mode */
+.light .text-slate-50:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #0f172a !important;
+}
+.light .text-slate-100:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #1e293b !important;
+}
+.light .text-slate-200:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #334155 !important;
+}
+.light .text-slate-300:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #475569 !important;
+}
+.light .text-slate-400:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #4b5563 !important;
+}
+.light .text-slate-500:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #475569 !important;
+}
+
+/* 3. Map light-gray colors to dark-gray colors in light mode */
+.light .text-gray-100:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #111827 !important;
+}
+.light .text-gray-200:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #1f2937 !important;
+}
+.light .text-gray-300:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #374151 !important;
+}
+.light .text-gray-400:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #4b5563 !important;
+}
+.light .text-gray-500:not(button):not(a):not(button *):not(a *):not([class*="bg-[#0078D4]"]):not([class*="bg-[#107C10]"]):not([class*="bg-[#A80000]"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-purple-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]) {
+  color: #374151 !important;
+}
+
+/* Specifically target classes where custom hex backgrounds like bg-[#0078D4] or bg-[#107C10] exist */
+/* These elements and their children should keep their white/light text color in light mode for readability */
+.light [class*="bg-[#0078D4]"] .text-white,
+.light [class*="bg-[#107C10]"] .text-white,
+.light [class*="bg-[#A80000]"] .text-white,
+.light [class*="bg-emerald-"] .text-white,
+.light [class*="bg-rose-"] .text-white,
+.light [class*="bg-blue-"] .text-white,
+.light [class*="bg-purple-"] .text-white,
+.light [class*="bg-indigo-"] .text-white,
+.light [class*="bg-red-"] .text-white,
+.light button .text-white,
+.light a .text-white {
+  color: #ffffff !important;
+}
+
+.light [class*="bg-[#0078D4]"] .text-slate-100,
+.light [class*="bg-[#107C10]"] .text-slate-100,
+.light [class*="bg-[#A80000]"] .text-slate-100,
+.light [class*="bg-emerald-"] .text-slate-100,
+.light [class*="bg-rose-"] .text-slate-100,
+.light [class*="bg-blue-"] .text-slate-100,
+.light [class*="bg-purple-"] .text-slate-100,
+.light [class*="bg-indigo-"] .text-slate-100,
+.light [class*="bg-red-"] .text-slate-100,
+.light button .text-slate-100,
+.light a .text-slate-100 {
+  color: #f1f5f9 !important;
+}
+
+.light [class*="bg-[#0078D4]"] .text-slate-200,
+.light [class*="bg-[#107C10]"] .text-slate-200,
+.light [class*="bg-[#A80000]"] .text-slate-200,
+.light [class*="bg-emerald-"] .text-slate-200,
+.light [class*="bg-rose-"] .text-slate-200,
+.light [class*="bg-blue-"] .text-slate-200,
+.light [class*="bg-purple-"] .text-slate-200,
+.light [class*="bg-indigo-"] .text-slate-200,
+.light [class*="bg-red-"] .text-slate-200,
+.light button .text-slate-200,
+.light a .text-slate-200 {
+  color: #e2e8f0 !important;
+}
+
+.light [class*="bg-[#0078D4]"] .text-slate-300,
+.light [class*="bg-[#107C10]"] .text-slate-300,
+.light [class*="bg-[#A80000]"] .text-slate-300,
+.light [class*="bg-emerald-"] .text-slate-300,
+.light [class*="bg-rose-"] .text-slate-300,
+.light [class*="bg-blue-"] .text-slate-300,
+.light [class*="bg-purple-"] .text-slate-300,
+.light [class*="bg-indigo-"] .text-slate-300,
+.light [class*="bg-red-"] .text-slate-300,
+.light button .text-slate-300,
+.light a .text-slate-300 {
+  color: #cbd5e1 !important;
+}
+
+.light [class*="bg-[#0078D4]"] .text-slate-400,
+.light [class*="bg-[#107C10]"] .text-slate-400,
+.light [class*="bg-[#A80000]"] .text-slate-400,
+.light [class*="bg-emerald-"] .text-slate-400,
+.light [class*="bg-rose-"] .text-slate-400,
+.light [class*="bg-blue-"] .text-slate-400,
+.light [class*="bg-purple-"] .text-slate-400,
+.light [class*="bg-indigo-"] .text-slate-400,
+.light [class*="bg-red-"] .text-slate-400,
+.light button .text-slate-400,
+.light a .text-slate-400 {
+  color: #94a3b8 !important;
+}
+

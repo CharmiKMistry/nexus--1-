@@ -30,6 +30,10 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<string>("All");
   const [selectedEvent, setSelectedEvent] = useState<PayrollEvent | null>(events[0] || null);
+  
+  // Custom non-blocking alert states
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form states for manual entry
   const [showAddForm, setShowAddForm] = useState(false);
@@ -56,7 +60,8 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
       if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
         processUploadedFile(file);
       } else {
-        alert("Only PDF files are supported for DMS Vault Sync.");
+        setErrorMessage("Only PDF files are supported for DMS Vault Sync.");
+        setTimeout(() => setErrorMessage(null), 4000);
       }
     }
   };
@@ -67,7 +72,8 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
       if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
         processUploadedFile(file);
       } else {
-        alert("Only PDF files are supported for DMS Vault Sync.");
+        setErrorMessage("Only PDF files are supported for DMS Vault Sync.");
+        setTimeout(() => setErrorMessage(null), 4000);
       }
     }
   };
@@ -125,7 +131,8 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
   const handleCreateEvent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEmployeeName || !formEmployeeId) {
-      alert("Please fill in mandatory fields.");
+      setErrorMessage("Please fill in all mandatory fields.");
+      setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
 
@@ -174,12 +181,11 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
     setFormComments("");
     setFormSupportDocs("");
     
-    alert(`Successfully registered new "${formType}" event. Audited and validated automatically by NEXUS.`);
+    setSuccessMessage(`Successfully registered new "${formType}" event. Audited and validated automatically by NEXUS.`);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
   const handleDeleteEvent = (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete this event for ${name}?`)) return;
-    
     const nextEvents = events.filter(evt => evt.id !== id);
     setEvents(nextEvents);
     NexusDB.payrollEvents = NexusDB.payrollEvents.filter(evt => evt.id !== id);
@@ -199,6 +205,8 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
       },
       ...NexusDB.auditLogs
     ];
+    setSuccessMessage(`Event for ${name} removed from registry.`);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
   const getStatusStyle = (status: PayrollEvent["status"]) => {
@@ -254,6 +262,20 @@ export default function PayrollEventCenter({ theme }: PayrollEventCenterProps) {
           {showAddForm ? "View Active Events" : "Configure Manual Event"}
         </button>
       </div>
+
+      {successMessage && (
+        <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded text-xs font-semibold flex items-center gap-2">
+          <CheckCircle2 size={14} className="text-emerald-500" />
+          {successMessage}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="p-3 bg-rose-500/10 border border-rose-500/25 text-rose-400 rounded text-xs font-semibold flex items-center gap-2">
+          <AlertCircle size={14} className="text-rose-500" />
+          {errorMessage}
+        </div>
+      )}
 
       {showAddForm ? (
         /* Manual Configuration Intake Form */
